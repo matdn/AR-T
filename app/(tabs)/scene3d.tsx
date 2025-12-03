@@ -1,87 +1,106 @@
 import { GLView, type ExpoWebGLRenderingContext } from "expo-gl";
-import type { EventSubscription } from "expo-modules-core";
-import { DeviceMotion, type DeviceMotionMeasurement } from "expo-sensors";
 import { Renderer } from "expo-three";
-import React, { useEffect, useRef } from "react";
-import { StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import React, { useEffect, useRef, useState } from "react";
+import { StyleSheet, View, GestureResponderEvent } from "react-native";
 import * as THREE from "three";
 
-
-const zee = new THREE.Vector3(0, 0, 1);
-const euler = new THREE.Euler();
-const q0 = new THREE.Quaternion();
-const q1 = new THREE.Quaternion(-Math.sqrt(0.5), 0, 0, Math.sqrt(0.5));
-
-function setDeviceQuaternion(
-  quaternion: THREE.Quaternion,
-  alpha: number,
-  beta: number,
-  gamma: number,
-  orient: number
-) {
-  euler.set(beta, alpha, -gamma, "YXZ");
-  quaternion.setFromEuler(euler);
-  quaternion.multiply(q1);
-  quaternion.multiply(q0.setFromAxisAngle(zee, -orient));
-}
+import Joystick from "../../components/Joystick";
+import ResetButton from "../../components/ResetButton";
+import { useDeviceMotion } from "../../hooks/useDeviceMotion";
+import { useTapDetector } from "../../hooks/useTapDetector";
+import { setDeviceQuaternion } from "../../utils/quaternion";
+import { 
+  createPlanet, 
+  addGridLinesToPlanet, 
+  createSkySphere, 
+  createRandomRectangles,
+  createRectangle 
+} from "../../utils/sceneObjects";
+import { 
+  rotatePlanetWithCamera, 
+  checkCollisions,
+  placeRectangleOnSurface 
+} from "../../utils/sceneHelpers";
 
 export default function SceneThree() {
   const animationFrameId = useRef<number | null>(null);
-
-  const rotationRef = useRef<{ alpha: number; beta: number; gamma: number }>({
-    alpha: 0,
-    beta: 0,
-    gamma: 0,
-  });
+  const rotationRef = useDeviceMotion();
 
   const cameraRef = useRef<THREE.PerspectiveCamera | null>(null);
+  const cubeRef = useRef<THREE.Mesh | null>(null);
+  const planetRef = useRef<THREE.Mesh | null>(null);
+  const wallsRef = useRef<THREE.Mesh[]>([]);
+  const rendererRef = useRef<Renderer | null>(null);
+  const sceneRef = useRef<THREE.Scene | null>(null);
+  const raycasterRef = useRef<THREE.Raycaster>(new THREE.Raycaster());
+  const [screenDimensions, setScreenDimensions] = useState({ width: 0, height: 0 });
 
-  const baseQuatRef = useRef<THREE.Quaternion>(
-    new THREE.Quaternion()
-  );
+  const baseQuatRef = useRef<THREE.Quaternion>(new THREE.Quaternion());
+  const deviceQuatRef = useRef<THREE.Quaternion>(new THREE.Quaternion());
+  const calibrationQuatRef = useRef<THREE.Quaternion>(new THREE.Quaternion());
 
-  const deviceQuatRef = useRef<THREE.Quaternion>(
-    new THREE.Quaternion()
-  );
+  const velocityRef = useRef<{ x: number; z: number }>({ x: 0, z: 0 });
+  const [joystickPosition, setJoystickPosition] = useState({ x: 0, y: 0 });
 
-  const calibrationQuatRef = useRef<THREE.Quaternion>(
-    new THREE.Quaternion() // identity au début
-  );
+  const handleScreenTap = (event: GestureResponderEvent) => {
+    if (!cameraRef.current || !planetRef.current || !raycasterRef.current) return;
+
+    const x = event.nativeEvent.locationX;
+    const y = event.nativeEvent.locationY;
+
+    const result = placeRectangleOnSurface(
+      raycasterRef.current,
+      cameraRef.current,
+      planetRef.current,
+      x,
+      y,
+      screenDimensions.width,
+      screenDimensions.height
+    );
+
+    if (result && planetRef.current) {
+      const rectangle = createRectangle(result.position, result.normal);
+      planetRef.current.add(rectangle);
+      wallsRef.current.push(rectangle);
+    }
+  };
+
+  const tapResponder = useTapDetector({ onTap: handleScreenTap });
+
+  const handleJoystickMove = (velocity: { x: number; z: number }) => {
+    velocityRef.current = velocity;
+    const maxDistance = 40;
+    setJoystickPosition({
+      x: velocity.x * maxDistance,
+      y: -velocity.z * maxDistance,
+    });
+  };
+
+  const handleJoystickRelease = () => {
+    velocityRef.current = { x: 0, z: 0 };
+    setJoystickPosition({ x: 0, y: 0 });
+  };
 
   useEffect(() => {
-    let subscription: EventSubscription | null = null;
-
-    DeviceMotion.setUpdateInterval(16);
-
-    DeviceMotion.isAvailableAsync().then((available) => {
-      if (!available) return;
-
-      subscription = DeviceMotion.addListener(
-        (event: DeviceMotionMeasurement) => {
-          if (event.rotation) {
-            const { alpha = 0, beta = 0, gamma = 0 } = event.rotation;
-            rotationRef.current = { alpha, beta, gamma };
-          }
-        }
-      );
-    });
-
     return () => {
       if (animationFrameId.current !== null) {
         cancelAnimationFrame(animationFrameId.current);
       }
-      subscription?.remove();
     };
   }, []);
 
   const onContextCreate = (gl: ExpoWebGLRenderingContext) => {
     const { drawingBufferWidth: width, drawingBufferHeight: height } = gl;
 
+    setScreenDimensions({ width, height });
+
     const renderer = new Renderer({ gl });
     renderer.setSize(width, height);
+    rendererRef.current = renderer;
 
     const scene = new THREE.Scene();
-    scene.background = new THREE.Color(0x25292e);
+    sceneRef.current = scene;
+    scene.background = new THREE.Color(0xffffff);
 
     const camera = new THREE.PerspectiveCamera(60, width / height, 0.1, 100);
     cameraRef.current = camera;
@@ -109,14 +128,27 @@ export default function SceneThree() {
     dirLight.position.set(3, 5, 2);
     scene.add(dirLight);
 
-    const grid = new THREE.GridHelper(10, 10, 0xffffff, 0x555555);
-    scene.add(grid);
+    // Create planet with grid lines
+    const planet = createPlanet();
+    addGridLinesToPlanet(planet);
+    scene.add(planet);
+    planetRef.current = planet;
+
+    // Create random rectangles
+    const rectangles = createRandomRectangles(20);
+    rectangles.forEach(rect => planet.add(rect));
+    wallsRef.current = rectangles;
+
+    // Create sky sphere
+    const sky = createSkySphere();
+    scene.add(sky);
+
 
     const geometry = new THREE.BoxGeometry(1, 1, 1);
     const material = new THREE.MeshStandardMaterial({ color: 0xff5555 });
     const cube = new THREE.Mesh(geometry, material);
     cube.position.set(0, 0.5, 0);
-    scene.add(cube);
+    cubeRef.current = cube;
 
     const renderLoop = () => {
       animationFrameId.current = requestAnimationFrame(renderLoop);
@@ -129,12 +161,32 @@ export default function SceneThree() {
         .multiply(deviceQuatRef.current);
 
       if (cameraRef.current) {
-        //cameraRef.current.quaternion.copy(targetQuat);
-
         cameraRef.current.quaternion.slerp(targetQuat, 0.2);
       }
 
       cube.rotation.y += 0.01;
+
+      if (planetRef.current && cameraRef.current) {
+        const currentRotationX = planetRef.current.rotation.x;
+        const currentRotationY = planetRef.current.rotation.y;
+
+        // Apply rotation based on joystick input
+        rotatePlanetWithCamera(
+          planetRef.current,
+          cameraRef.current,
+          velocityRef.current
+        );
+
+        planetRef.current.updateMatrixWorld(true);
+
+        // Check for collisions
+        const hasCollision = checkCollisions(cameraRef.current, wallsRef.current);
+
+        if (hasCollision) {
+          planetRef.current.rotation.x = currentRotationX;
+          planetRef.current.rotation.y = currentRotationY;
+        }
+      }
 
       renderer.render(scene, camera);
       gl.endFrameEXP();
@@ -164,14 +216,20 @@ export default function SceneThree() {
 
   return (
     <View style={styles.container}>
-      <GLView style={styles.glView} onContextCreate={onContextCreate} />
-
-      {/* Bouton overlay pour recadrer la vue */}
-      <View style={styles.buttonContainer}>
-        <TouchableOpacity style={styles.button} onPress={handleResetView}>
-          <Text style={styles.buttonText}>Recentrer la vue</Text>
-        </TouchableOpacity>
+      <View style={styles.glView} {...tapResponder.panHandlers}>
+        <GLView 
+          style={{ flex: 1 }} 
+          onContextCreate={onContextCreate}
+        />
       </View>
+
+      <ResetButton onPress={handleResetView} />
+
+      <Joystick
+        position={joystickPosition}
+        onMove={handleJoystickMove}
+        onRelease={handleJoystickRelease}
+      />
     </View>
   );
 }
@@ -183,20 +241,5 @@ const styles = StyleSheet.create({
   },
   glView: {
     flex: 1,
-  },
-  buttonContainer: {
-    position: "absolute",
-    bottom: 40,
-    alignSelf: "center",
-  },
-  button: {
-    paddingHorizontal: 20,
-    paddingVertical: 10,
-    borderRadius: 999,
-    backgroundColor: "rgba(0,0,0,0.6)",
-  },
-  buttonText: {
-    color: "white",
-    fontWeight: "600",
   },
 });
