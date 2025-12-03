@@ -16,7 +16,7 @@ const SPHERE_RADIUS = 15;
 const CAMERA_CONFIG = {
   fov: 60,
   near: 0.1,
-  far: 100,
+  far: 300,
   initialPos: { x: 0, y: 5, z: 0 },
 };
 
@@ -113,6 +113,25 @@ export default function SceneThree() {
     // spotLight.position.set(0, 6, -5);
     // scene.add(spotLight);
   };
+
+  const createEnvironmentMaterial = () => {
+    const envTexture = new TextureLoader().load(
+      require("../../assets/textures/puresky.png")
+    );
+
+    envTexture.flipY = false;
+
+    envTexture.wrapS = envTexture.wrapT = THREE.ClampToEdgeWrapping;
+    envTexture.rotation = Math.PI; 
+    envTexture.center.set(0.5, 0.5);
+
+    return new THREE.MeshBasicMaterial({
+      map: envTexture,
+      side: THREE.BackSide,
+      depthWrite: false,
+    });
+  };
+
 
   const createGrassMaterial = () => {
     const grassTex = new TextureLoader().load(
@@ -226,6 +245,12 @@ export default function SceneThree() {
 
     initializeLighting(scene);
 
+    const envMaterial = createEnvironmentMaterial();
+    const envGeo = new THREE.SphereGeometry(100, 64, 32);
+    const envMesh = new THREE.Mesh(envGeo, envMaterial);
+    envMesh.position.set(0, 0, 0);
+    scene.add(envMesh);
+
     const groundMaterial = createGrassMaterial();
     const groundPlane = new THREE.SphereGeometry(
       SPHERE_RADIUS, 50, 20
@@ -311,6 +336,8 @@ export default function SceneThree() {
 
       camera.quaternion.slerp(targetQuat, 0.2);
 
+      envMesh.rotation.y += 0.001;
+      
       groundMesh.rotation.x += 0.001;
       groundMesh.rotation.z += 0.0;
 
