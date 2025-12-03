@@ -11,21 +11,13 @@ const euler = new THREE.Euler();
 const q0 = new THREE.Quaternion();
 const q1 = new THREE.Quaternion(-Math.sqrt(0.5), 0, 0, Math.sqrt(0.5));
 
-const GRASS_CONFIG = {
-  bladeCount: 40000,
-  patchRadius: 50,
-  minHeight: 0.25,
-  maxHeight: 0.5,
-  bladeWidth: 0.08,
-  color: 0x228833,
-  amplitude: 0.25,
-};
+const SPHERE_RADIUS = 15;
 
 const CAMERA_CONFIG = {
   fov: 60,
   near: 0.1,
   far: 100,
-  initialPos: { x: 0, y: 5, z: 3 },
+  initialPos: { x: 0, y: 5, z: 0 },
 };
 
 const SCENE_CONFIG = {
@@ -60,6 +52,9 @@ export default function SceneThree() {
   const baseQuatRef = useRef<THREE.Quaternion>(new THREE.Quaternion());
   const deviceQuatRef = useRef<THREE.Quaternion>(new THREE.Quaternion());
   const calibrationQuatRef = useRef<THREE.Quaternion>(new THREE.Quaternion());
+
+  const prevRotRef = useRef({ x: 0, z: 0 });
+
 
   useEffect(() => {
     let subscription: EventSubscription | null = null;
@@ -111,12 +106,12 @@ export default function SceneThree() {
   };
 
   const initializeLighting = (scene: THREE.Scene) => {
-    // const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
-    // scene.add(ambientLight);
+    const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
+    scene.add(ambientLight);
 
-    const spotLight = new THREE.SpotLight(0xffffff, 20);
-    spotLight.position.set(0, 6, -5);
-    scene.add(spotLight);
+    // const spotLight = new THREE.SpotLight(0xffffff, 20);
+    // spotLight.position.set(0, 6, -5);
+    // scene.add(spotLight);
   };
 
   const createGrassMaterial = () => {
@@ -141,119 +136,6 @@ export default function SceneThree() {
     });
   };
 
-  const generateGrassGeometry = () => {
-    const { bladeCount, patchRadius, minHeight, maxHeight, bladeWidth } = GRASS_CONFIG;
-
-    const positions: number[] = [];
-    const tips: number[] = [];
-    const offsets: number[] = [];
-    const origins: number[] = [];
-
-    for (let i = 0; i < bladeCount; i++) {
-      const angle = Math.random() * Math.PI * 2;
-      const radius = Math.sqrt(Math.random()) * patchRadius;
-      const baseX = Math.cos(angle) * radius;
-      const baseZ = Math.sin(angle) * radius;
-      const baseY = 0;
-
-      const height = minHeight + Math.random() * (maxHeight - minHeight);
-
-      const yaw = Math.random() * Math.PI * 2;
-      const dx = Math.cos(yaw) * bladeWidth;
-      const dz = Math.sin(yaw) * bladeWidth;
-
-      positions.push(baseX - dx * 0.5, baseY, baseZ - dz * 0.5);
-      tips.push(0.0);
-      offsets.push(Math.random());
-      origins.push(baseX, baseY, baseZ);
-
-      positions.push(baseX + dx * 0.5, baseY, baseZ + dz * 0.5);
-      tips.push(0.0);
-      offsets.push(Math.random());
-      origins.push(baseX, baseY, baseZ);
-
-      positions.push(baseX, baseY + height, baseZ);
-      tips.push(1.0);
-      offsets.push(Math.random());
-      origins.push(baseX, baseY, baseZ);
-    }
-
-    const geometry = new THREE.BufferGeometry();
-    geometry.setAttribute("position", new THREE.Float32BufferAttribute(positions, 3));
-    geometry.setAttribute("aTip", new THREE.Float32BufferAttribute(tips, 1));
-    geometry.setAttribute("aOffset", new THREE.Float32BufferAttribute(offsets, 1));
-    geometry.setAttribute("aOrigin", new THREE.Float32BufferAttribute(origins, 3));
-
-    return geometry;
-  };
-
-  const createGrassShaderMaterial = (uniforms: Record<string, any>) => {
-    return new THREE.ShaderMaterial({
-      uniforms,
-      vertexShader: `
-      precision highp float;
-
-      attribute float aTip;
-      attribute vec3 aOrigin;
-
-      uniform float uPatchSize;
-      uniform vec3 uPlayerPosition;
-      uniform vec3 uSphereCenter;
-      uniform float uSphereRadius;
-
-      void main() {
-        float halfPatchSize = uPatchSize * 0.5;
-        vec3 origin = aOrigin;
-
-        // Wrap autour de la caméra
-        origin.x = mod(origin.x - uPlayerPosition.x + halfPatchSize, uPatchSize) - halfPatchSize;
-        origin.z = mod(origin.z - uPlayerPosition.z + halfPatchSize, uPatchSize) - halfPatchSize;
-
-        // Position locale du vertex (forme du brin)
-        vec3 local = position - aOrigin;
-
-        // Position "horizontale" du pied du brin
-        vec3 flatPos = uPlayerPosition + origin;
-
-        // Projection de ce point sur la sphère
-        vec2 dXZ = flatPos.xz - uSphereCenter.xz;
-        float r2 = uSphereRadius * uSphereRadius;
-        float h = sqrt(max(r2 - dot(dXZ, dXZ), 0.0));
-
-        // Point de base sur la sphère (surface)
-        vec3 basePos = vec3(flatPos.x, uSphereCenter.y + h, flatPos.z);
-
-        // Normale de la sphère au point de base
-        vec3 normal = normalize(basePos - uSphereCenter);
-
-        // Tangente arbitraire
-        vec3 tangent1 = normalize(vec3(-normal.z, 0.0, normal.x));
-        vec3 tangent2 = normalize(cross(normal, tangent1));
-
-        // local.y = hauteur, local.x / local.z = petite largeur
-        vec3 worldPos = basePos
-        + tangent1 * local.x
-        + normal   * local.y
-        + tangent2 * local.z;
-
-
-        vec4 mvPosition = viewMatrix * vec4(worldPos, 1.0);
-        gl_Position = projectionMatrix * mvPosition;
-      }
-    `,
-      fragmentShader: `
-      precision mediump float;
-      uniform vec3 uColor;
-
-      void main() {
-        gl_FragColor = vec4(uColor, 1.0);
-      }
-    `,
-      side: THREE.DoubleSide,
-    });
-  };
-
-
   const initializeDeviceCalibration = () => {
     const { alpha, beta, gamma } = rotationRef.current;
     const initialDeviceQuat = new THREE.Quaternion();
@@ -261,6 +143,74 @@ export default function SceneThree() {
     const invDevice = initialDeviceQuat.clone().invert();
     calibrationQuatRef.current.copy(baseQuatRef.current).multiply(invDevice);
   };
+
+  const createGrassShaderMaterial = () => {
+    return new THREE.ShaderMaterial({
+      uniforms: {
+        uSphereCenter: { value: new THREE.Vector3(0, -SPHERE_RADIUS, 0) },
+        uSphereRadius: { value: SPHERE_RADIUS - 0.1 },
+        time: { value: 0 },
+      },
+      vertexShader: `
+      varying vec2 vUv;
+      uniform float time;
+      uniform vec3 uSphereCenter;
+      uniform float uSphereRadius;
+
+      void main() {
+        vUv = uv;
+
+        // Position locale du brin (dans le patch)
+        vec4 mvPosition = vec4(position, 1.0);
+
+        #ifdef USE_INSTANCING
+          mvPosition = instanceMatrix * mvPosition;
+        #endif
+
+        // Position monde AVANT courbure sur la sphère
+        vec4 worldPos = modelMatrix * mvPosition;
+
+        // --- VENT (inspiré de ton exemple) ---
+        float dispPower = 1.0 - cos(uv.y * 3.14159265 / 2.0);
+        float wind = sin(worldPos.x * 0.5 + time * 2.0) * 0.1 * dispPower;
+
+        // Direction radiale depuis le centre de la sphère
+        vec3 dir = normalize(worldPos.xyz - uSphereCenter);
+
+        // Vector latéral pour le vent (perpendiculaire à dir)
+        vec3 side = normalize(cross(dir, vec3(0.0, 1.0, 0.0)));
+        if (length(side) < 0.001) {
+          side = normalize(cross(dir, vec3(1.0, 0.0, 0.0)));
+        }
+
+        // Hauteur du brin selon vUv.y (0 = base, 1 = tip)
+        float height = uv.y * 0.5;
+
+        // Base du brin collée à la sphère
+        vec3 basePos = uSphereCenter + dir * uSphereRadius;
+
+        // Position finale : base + hauteur radiale + vent latéral
+        vec3 finalPos = basePos + dir * height + side * wind;
+
+        vec4 viewPos = viewMatrix * vec4(finalPos, 1.0);
+        gl_Position = projectionMatrix * viewPos;
+      }
+    `,
+      fragmentShader: `
+      varying vec2 vUv;
+
+      void main() {
+        vec3 baseColor = vec3(0.41, 1.0, 0.5);
+        float clarity = (vUv.y * 0.5) + 0.5;
+        gl_FragColor = vec4(baseColor * clarity, 1.0);
+      }
+    `,
+      side: THREE.DoubleSide,
+      transparent: false,
+    });
+  };
+
+
 
   const onContextCreate = async (gl: ExpoWebGLRenderingContext) => {
     const { drawingBufferWidth: width, drawingBufferHeight: height } = gl;
@@ -277,42 +227,77 @@ export default function SceneThree() {
     initializeLighting(scene);
 
     const groundMaterial = createGrassMaterial();
-    // const groundPlane = new THREE.PlaneGeometry(
-    //   SCENE_CONFIG.groundSize,
-    //   SCENE_CONFIG.groundSize,
-    //   1,
-    //   1
-    // );
-    // const groundMesh = new THREE.Mesh(groundPlane, groundMaterial);
-    // groundMesh.rotation.x = -Math.PI / 2;
     const groundPlane = new THREE.SphereGeometry(
-      15, 50, 20
+      SPHERE_RADIUS, 50, 20
     );
     const groundMesh = new THREE.Mesh(groundPlane, groundMaterial);
     groundMesh.position.y = -15;
     scene.add(groundMesh);
 
-    const grassGeometry = generateGrassGeometry();
-    const patchSize = GRASS_CONFIG.patchRadius * 2;
-
-    const grassUniforms = {
-      uTime: { value: 0 },
-      uAmplitude: { value: GRASS_CONFIG.amplitude },
-      uColor: { value: new THREE.Color(GRASS_CONFIG.color) },
-      uPatchSize: { value: patchSize },
-      uPlayerPosition: { value: new THREE.Vector3(0, 0, 0) },
-
-      // → nouveaux uniforms
-      uSphereCenter: { value: new THREE.Vector3(0, -15, 0) },
-      uSphereRadius: { value: 15 },
+    prevRotRef.current = {
+      x: groundMesh.rotation.x,
+      z: groundMesh.rotation.z,
     };
 
+    const clock = new THREE.Clock();
 
-    const grassBladesMaterial = createGrassShaderMaterial(grassUniforms);
+    const grassMaterial = createGrassShaderMaterial();
 
-    const grassBladesMesh = new THREE.Mesh(grassGeometry, grassBladesMaterial);
-    grassBladesMesh.frustumCulled = false;
-    scene.add(grassBladesMesh);
+    const gridGroup = new THREE.Group();
+    const gridSize = 8;
+    const tileSize = 4;
+    const spacing = 0.01;
+    const step = tileSize + spacing;
+    const halfWidth = (gridSize * step) / 2;
+    const wrapDistance = gridSize * step;
+
+    const bladeGeo = new THREE.PlaneGeometry(0.1, 1, 1, 4);
+    bladeGeo.translate(0, 0.5, 0);
+
+    const INSTANCES_PER_TILE = 500;
+    const dummy = new THREE.Object3D();
+
+    for (let i = 0; i < gridSize; i++) {
+      for (let j = 0; j < gridSize; j++) {
+        const grassPatch = new THREE.InstancedMesh(
+          bladeGeo,
+          grassMaterial,
+          INSTANCES_PER_TILE
+        );
+
+        grassPatch.position.set(
+          i * step - (gridSize - 1) * step * 0.5,
+          0,
+          j * step - (gridSize - 1) * step * 0.5
+        );
+
+        for (let k = 0; k < INSTANCES_PER_TILE; k++) {
+          dummy.position.set(
+            (Math.random() - 0.5) * tileSize,
+            0,
+            (Math.random() - 0.5) * tileSize
+          );
+
+          const minH = 0.2;
+          const maxH = 0.6;
+          const randomHeight = minH + Math.random() * (maxH - minH);
+
+          dummy.scale.set(0.5, randomHeight, 1.0);
+
+          dummy.rotation.y = Math.random() * Math.PI * 2;
+
+          dummy.updateMatrix();
+          grassPatch.setMatrixAt(k, dummy.matrix);
+        }
+
+        grassPatch.instanceMatrix.needsUpdate = true;
+
+        gridGroup.add(grassPatch);
+      }
+    }
+
+    gridGroup.position.y = 0;
+    scene.add(gridGroup);
 
     const renderLoop = () => {
       animationFrameId.current = requestAnimationFrame(renderLoop);
@@ -326,13 +311,44 @@ export default function SceneThree() {
 
       camera.quaternion.slerp(targetQuat, 0.2);
 
-      const playerPos = grassUniforms.uPlayerPosition.value;
-      playerPos.copy(camera.position);
-      playerPos.y = 0;
-
-      grassUniforms.uTime.value = Date.now() * 0.001;
-
       groundMesh.rotation.x += 0.001;
+      groundMesh.rotation.z += 0.0;
+
+      grassMaterial.uniforms.time.value = clock.getElapsedTime();
+
+      const currentRotX = groundMesh.rotation.x;
+      const currentRotZ = groundMesh.rotation.z;
+
+      const deltaRotX = currentRotX - prevRotRef.current.x;
+      const deltaRotZ = currentRotZ - prevRotRef.current.z;
+
+      prevRotRef.current.x = currentRotX;
+      prevRotRef.current.z = currentRotZ;
+
+      const scrollFactor = SPHERE_RADIUS;
+
+      const deltaScrollZ = deltaRotX * scrollFactor;
+      const deltaScrollX = -deltaRotZ * scrollFactor;
+
+      gridGroup.children.forEach((child) => {
+        if (!(child instanceof THREE.Mesh)) return;
+
+        child.position.x += deltaScrollX;
+        child.position.z += deltaScrollZ;
+
+
+        if (child.position.x > halfWidth) {
+          child.position.x -= wrapDistance;
+        } else if (child.position.x < -halfWidth) {
+          child.position.x += wrapDistance;
+        }
+
+        if (child.position.z > halfWidth) {
+          child.position.z -= wrapDistance;
+        } else if (child.position.z < -halfWidth) {
+          child.position.z += wrapDistance;
+        }
+      });
 
       renderer.render(scene, camera);
       gl.endFrameEXP();
