@@ -6,11 +6,24 @@ import React, { useEffect, useRef } from "react";
 import { StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import * as THREE from "three";
 
-
 const zee = new THREE.Vector3(0, 0, 1);
 const euler = new THREE.Euler();
 const q0 = new THREE.Quaternion();
 const q1 = new THREE.Quaternion(-Math.sqrt(0.5), 0, 0, Math.sqrt(0.5));
+
+const SPHERE_RADIUS = 15;
+
+const CAMERA_CONFIG = {
+  fov: 60,
+  near: 0.1,
+  far: 100,
+  initialPos: { x: 0, y: 5, z: 0 },
+};
+
+const SCENE_CONFIG = {
+  background: 0x25292e,
+  groundSize: 100,
+};
 
 function setDeviceQuaternion(
   quaternion: THREE.Quaternion,
@@ -36,17 +49,12 @@ export default function SceneThree() {
 
   const cameraRef = useRef<THREE.PerspectiveCamera | null>(null);
 
-  const baseQuatRef = useRef<THREE.Quaternion>(
-    new THREE.Quaternion()
-  );
+  const baseQuatRef = useRef<THREE.Quaternion>(new THREE.Quaternion());
+  const deviceQuatRef = useRef<THREE.Quaternion>(new THREE.Quaternion());
+  const calibrationQuatRef = useRef<THREE.Quaternion>(new THREE.Quaternion());
 
-  const deviceQuatRef = useRef<THREE.Quaternion>(
-    new THREE.Quaternion()
-  );
+  const prevRotRef = useRef({ x: 0, z: 0 });
 
-  const calibrationQuatRef = useRef<THREE.Quaternion>(
-    new THREE.Quaternion() // identity au début
-  );
 
   useEffect(() => {
     let subscription: EventSubscription | null = null;
@@ -74,6 +82,136 @@ export default function SceneThree() {
     };
   }, []);
 
+  const initializeCamera = (width: number, height: number) => {
+    const camera = new THREE.PerspectiveCamera(
+      CAMERA_CONFIG.fov,
+      width / height,
+      CAMERA_CONFIG.near,
+      CAMERA_CONFIG.far
+    );
+
+    camera.position.set(
+      CAMERA_CONFIG.initialPos.x,
+      CAMERA_CONFIG.initialPos.y,
+      CAMERA_CONFIG.initialPos.z
+    );
+    camera.rotation.order = "YXZ";
+    camera.lookAt(0, 5, 0);
+    camera.updateMatrixWorld();
+
+    cameraRef.current = camera;
+    baseQuatRef.current.copy(camera.quaternion);
+
+    return camera;
+  };
+
+  const initializeLighting = (scene: THREE.Scene) => {
+    const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
+    scene.add(ambientLight);
+
+    // const spotLight = new THREE.SpotLight(0xffffff, 20);
+    // spotLight.position.set(0, 6, -5);
+    // scene.add(spotLight);
+  };
+
+  const createGrassMaterial = () => {
+    const grassTex = new TextureLoader().load(
+      require("../../assets/textures/grass_diffuse.jpg")
+    );
+    grassTex.wrapS = grassTex.wrapT = THREE.RepeatWrapping;
+    grassTex.repeat.set(20, 20);
+
+    const grassNormal = new TextureLoader().load(
+      require("../../assets/textures/normal_map.jpg")
+    );
+    grassNormal.wrapS = grassNormal.wrapT = THREE.RepeatWrapping;
+    grassNormal.repeat.set(20, 20);
+
+    return new THREE.MeshStandardMaterial({
+      map: grassTex,
+      normalMap: grassNormal,
+      roughness: 1.0,
+      metalness: 0.0,
+      normalScale: new THREE.Vector2(0.5, 0.5),
+    });
+  };
+
+  const initializeDeviceCalibration = () => {
+    const { alpha, beta, gamma } = rotationRef.current;
+    const initialDeviceQuat = new THREE.Quaternion();
+    setDeviceQuaternion(initialDeviceQuat, alpha, beta, gamma, 0);
+    const invDevice = initialDeviceQuat.clone().invert();
+    calibrationQuatRef.current.copy(baseQuatRef.current).multiply(invDevice);
+  };
+
+  const createGrassShaderMaterial = () => {
+    return new THREE.ShaderMaterial({
+      uniforms: {
+        uSphereCenter: { value: new THREE.Vector3(0, -SPHERE_RADIUS, 0) },
+        uSphereRadius: { value: SPHERE_RADIUS - 0.1 },
+        time: { value: 0 },
+      },
+      vertexShader: `
+      varying vec2 vUv;
+      uniform float time;
+      uniform vec3 uSphereCenter;
+      uniform float uSphereRadius;
+
+      void main() {
+        vUv = uv;
+
+        // Position locale du brin (dans le patch)
+        vec4 mvPosition = vec4(position, 1.0);
+
+        #ifdef USE_INSTANCING
+          mvPosition = instanceMatrix * mvPosition;
+        #endif
+
+        // Position monde AVANT courbure sur la sphère
+        vec4 worldPos = modelMatrix * mvPosition;
+
+        // --- VENT (inspiré de ton exemple) ---
+        float dispPower = 1.0 - cos(uv.y * 3.14159265 / 2.0);
+        float wind = sin(worldPos.x * 0.5 + time * 2.0) * 0.1 * dispPower;
+
+        // Direction radiale depuis le centre de la sphère
+        vec3 dir = normalize(worldPos.xyz - uSphereCenter);
+
+        // Vector latéral pour le vent (perpendiculaire à dir)
+        vec3 side = normalize(cross(dir, vec3(0.0, 1.0, 0.0)));
+        if (length(side) < 0.001) {
+          side = normalize(cross(dir, vec3(1.0, 0.0, 0.0)));
+        }
+
+        // Hauteur du brin selon vUv.y (0 = base, 1 = tip)
+        float height = uv.y * 0.5;
+
+        // Base du brin collée à la sphère
+        vec3 basePos = uSphereCenter + dir * uSphereRadius;
+
+        // Position finale : base + hauteur radiale + vent latéral
+        vec3 finalPos = basePos + dir * height + side * wind;
+
+        vec4 viewPos = viewMatrix * vec4(finalPos, 1.0);
+        gl_Position = projectionMatrix * viewPos;
+      }
+    `,
+      fragmentShader: `
+      varying vec2 vUv;
+
+      void main() {
+        vec3 baseColor = vec3(0.41, 1.0, 0.5);
+        float clarity = (vUv.y * 0.5) + 0.5;
+        gl_FragColor = vec4(baseColor * clarity, 1.0);
+      }
+    `,
+      side: THREE.DoubleSide,
+      transparent: false,
+    });
+  };
+
+
+
   const onContextCreate = async (gl: ExpoWebGLRenderingContext) => {
     const { drawingBufferWidth: width, drawingBufferHeight: height } = gl;
 
@@ -81,70 +219,85 @@ export default function SceneThree() {
     renderer.setSize(width, height);
 
     const scene = new THREE.Scene();
-    scene.background = new THREE.Color(0x25292e);
+    scene.background = new THREE.Color(SCENE_CONFIG.background);
 
-    const camera = new THREE.PerspectiveCamera(60, width / height, 0.1, 100);
-    cameraRef.current = camera;
+    const camera = initializeCamera(width, height);
+    initializeDeviceCalibration();
 
-    camera.position.set(0, 5, 3);
-    camera.rotation.order = "YXZ";
+    initializeLighting(scene);
 
-    camera.lookAt(0, 5, 0);
-    camera.updateMatrixWorld();
+    const groundMaterial = createGrassMaterial();
+    const groundPlane = new THREE.SphereGeometry(
+      SPHERE_RADIUS, 50, 20
+    );
+    const groundMesh = new THREE.Mesh(groundPlane, groundMaterial);
+    groundMesh.position.y = -15;
+    scene.add(groundMesh);
 
-    baseQuatRef.current.copy(camera.quaternion);
+    prevRotRef.current = {
+      x: groundMesh.rotation.x,
+      z: groundMesh.rotation.z,
+    };
 
-    {
-      const { alpha, beta, gamma } = rotationRef.current;
-      const initialDeviceQuat = new THREE.Quaternion();
-      setDeviceQuaternion(initialDeviceQuat, alpha, beta, gamma, 0);
-      const invDevice = initialDeviceQuat.clone().invert();
-      calibrationQuatRef.current.copy(baseQuatRef.current).multiply(invDevice);
+    const clock = new THREE.Clock();
+
+    const grassMaterial = createGrassShaderMaterial();
+
+    const gridGroup = new THREE.Group();
+    const gridSize = 8;
+    const tileSize = 4;
+    const spacing = 0.01;
+    const step = tileSize + spacing;
+    const halfWidth = (gridSize * step) / 2;
+    const wrapDistance = gridSize * step;
+
+    const bladeGeo = new THREE.PlaneGeometry(0.1, 1, 1, 4);
+    bladeGeo.translate(0, 0.5, 0);
+
+    const INSTANCES_PER_TILE = 500;
+    const dummy = new THREE.Object3D();
+
+    for (let i = 0; i < gridSize; i++) {
+      for (let j = 0; j < gridSize; j++) {
+        const grassPatch = new THREE.InstancedMesh(
+          bladeGeo,
+          grassMaterial,
+          INSTANCES_PER_TILE
+        );
+
+        grassPatch.position.set(
+          i * step - (gridSize - 1) * step * 0.5,
+          0,
+          j * step - (gridSize - 1) * step * 0.5
+        );
+
+        for (let k = 0; k < INSTANCES_PER_TILE; k++) {
+          dummy.position.set(
+            (Math.random() - 0.5) * tileSize,
+            0,
+            (Math.random() - 0.5) * tileSize
+          );
+
+          const minH = 0.2;
+          const maxH = 0.6;
+          const randomHeight = minH + Math.random() * (maxH - minH);
+
+          dummy.scale.set(0.5, randomHeight, 1.0);
+
+          dummy.rotation.y = Math.random() * Math.PI * 2;
+
+          dummy.updateMatrix();
+          grassPatch.setMatrixAt(k, dummy.matrix);
+        }
+
+        grassPatch.instanceMatrix.needsUpdate = true;
+
+        gridGroup.add(grassPatch);
+      }
     }
 
-    // const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
-    // scene.add(ambientLight);
-
-    // const dirLight = new THREE.DirectionalLight(0xffffff, 0.8);
-    // dirLight.position.set(3, 5, 2);
-    // scene.add(dirLight);
-
-    const spLight = new THREE.SpotLight(0xffffff, 1);
-    spLight.position.set(0, 2, -5);
-    scene.add(spLight);
-
-    const grid = new THREE.GridHelper(10, 10, 0xffffff, 0x555555);
-    scene.add(grid);
-
-    const loader = new THREE.TextureLoader();
-
-    const grassTex = new TextureLoader().load(require('../../assets/textures/grass_diffuse.jpg'))
-    grassTex.wrapS = grassTex.wrapT = THREE.RepeatWrapping;
-    grassTex.repeat.set(20, 20);
-
-    const grassNormal = new TextureLoader().load(require('../../assets/textures/normal_map.jpg'))
-    grassNormal.wrapS = grassNormal.wrapT = THREE.RepeatWrapping;
-    grassNormal.repeat.set(20, 20);
-
-    const grassMaterial = new THREE.MeshStandardMaterial({
-      map: grassTex,
-      normalMap: grassNormal,
-      roughness: 1.0,
-      metalness: 0.0,
-      normalScale: new THREE.Vector2(0.5, 0.5),
-    });
-
-    const grassPlane = new THREE.PlaneGeometry(100, 100, 1, 1);
-    const grassMesh = new THREE.Mesh(grassPlane, grassMaterial);
-    grassMesh.rotation.x = -Math.PI / 2;
-    scene.add(grassMesh);
-
-
-    const geometry = new THREE.BoxGeometry(1, 1, 1);
-    const material = new THREE.MeshStandardMaterial({ color: 0xff5555 });
-    const cube = new THREE.Mesh(geometry, material);
-    cube.position.set(0, 0.5, 0);
-    scene.add(cube);
+    gridGroup.position.y = 0;
+    scene.add(gridGroup);
 
     const renderLoop = () => {
       animationFrameId.current = requestAnimationFrame(renderLoop);
@@ -156,13 +309,46 @@ export default function SceneThree() {
         .copy(calibrationQuatRef.current)
         .multiply(deviceQuatRef.current);
 
-      if (cameraRef.current) {
-        //cameraRef.current.quaternion.copy(targetQuat);
+      camera.quaternion.slerp(targetQuat, 0.2);
 
-        cameraRef.current.quaternion.slerp(targetQuat, 0.2);
-      }
+      groundMesh.rotation.x += 0.001;
+      groundMesh.rotation.z += 0.0;
 
-      cube.rotation.y += 0.01;
+      grassMaterial.uniforms.time.value = clock.getElapsedTime();
+
+      const currentRotX = groundMesh.rotation.x;
+      const currentRotZ = groundMesh.rotation.z;
+
+      const deltaRotX = currentRotX - prevRotRef.current.x;
+      const deltaRotZ = currentRotZ - prevRotRef.current.z;
+
+      prevRotRef.current.x = currentRotX;
+      prevRotRef.current.z = currentRotZ;
+
+      const scrollFactor = SPHERE_RADIUS;
+
+      const deltaScrollZ = deltaRotX * scrollFactor;
+      const deltaScrollX = -deltaRotZ * scrollFactor;
+
+      gridGroup.children.forEach((child) => {
+        if (!(child instanceof THREE.Mesh)) return;
+
+        child.position.x += deltaScrollX;
+        child.position.z += deltaScrollZ;
+
+
+        if (child.position.x > halfWidth) {
+          child.position.x -= wrapDistance;
+        } else if (child.position.x < -halfWidth) {
+          child.position.x += wrapDistance;
+        }
+
+        if (child.position.z > halfWidth) {
+          child.position.z -= wrapDistance;
+        } else if (child.position.z < -halfWidth) {
+          child.position.z += wrapDistance;
+        }
+      });
 
       renderer.render(scene, camera);
       gl.endFrameEXP();
@@ -177,24 +363,20 @@ export default function SceneThree() {
 
     cam.lookAt(0, 5, 0);
     cam.updateMatrixWorld();
-
     baseQuatRef.current.copy(cam.quaternion);
 
     const { alpha, beta, gamma } = rotationRef.current;
     const currentDeviceQuat = new THREE.Quaternion();
     setDeviceQuaternion(currentDeviceQuat, alpha, beta, gamma, 0);
-
     const invDevice = currentDeviceQuat.clone().invert();
-    calibrationQuatRef.current
-      .copy(baseQuatRef.current)
-      .multiply(invDevice);
+    calibrationQuatRef.current.copy(baseQuatRef.current).multiply(invDevice);
   };
 
   return (
     <View style={styles.container}>
       <GLView style={styles.glView} onContextCreate={onContextCreate} />
 
-      {/* Bouton overlay pour recadrer la vue */}
+      {/* Reset view button overlay */}
       <View style={styles.buttonContainer}>
         <TouchableOpacity style={styles.button} onPress={handleResetView}>
           <Text style={styles.buttonText}>Recentrer la vue</Text>
