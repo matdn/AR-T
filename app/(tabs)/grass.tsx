@@ -247,12 +247,12 @@ export default function SceneThree() {
     const { rainGroup, rainSprites, updateRain } = createWeatherSystem(
       scene,
       {
-        rainCount: 500,
+        rainCount: 1000,
         spreadX: 60,
         spreadY: 40,
         minY: 15,
         maxY: 30,
-        fallSpeed: 3,
+        fallSpeed: 1.5,
         resetThreshold: -5,
       }
     );

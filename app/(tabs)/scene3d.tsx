@@ -9,21 +9,22 @@ import ResetButton from "../../components/ResetButton";
 import { useDeviceMotion } from "../../hooks/useDeviceMotion";
 import { useTapDetector } from "../../hooks/useTapDetector";
 import { setDeviceQuaternion } from "../../utils/quaternion";
-import { 
-  createPlanet, 
-  addGridLinesToPlanet, 
-  createSkySphere, 
+import {
+  createPlanet,
+  addGridLinesToPlanet,
+  createSkySphere,
   createRandomRectangles,
   createRectangle,
   createGrassGrid
 } from "../../utils/sceneObjects";
-import { 
-  rotatePlanetWithCamera, 
+import {
+  rotatePlanetWithCamera,
   checkCollisions,
-  placeRectangleOnSurface 
+  placeRectangleOnSurface
 } from "../../utils/sceneHelpers";
 import { updateGrassTime } from "../../utils/grassShader";
 import { updateGrassWrapping } from "../../utils/grassHelpers";
+import { createWeatherSystem } from "../../components/Weather";
 
 export default function SceneThree() {
   const animationFrameId = useRef<number | null>(null);
@@ -169,12 +170,25 @@ export default function SceneThree() {
       minHeight: 0.2,
       maxHeight: 0.6,
     });
-    
+
+    const { rainGroup, rainSprites, updateRain } = createWeatherSystem(
+      scene,
+      {
+        rainCount: 1000,
+        spreadX: 60,
+        spreadY: 40,
+        minY: 15,
+        maxY: 30,
+        fallSpeed: 1.5,
+        resetThreshold: -5,
+      }
+    );
+
     scene.add(grassData.group);
     grassGroupRef.current = grassData.group;
     grassMaterialRef.current = grassData.material;
     grassParamsRef.current = grassData.params;
-    
+
     prevRotRef.current = {
       x: planet.rotation.x,
       z: planet.rotation.z,
@@ -202,6 +216,8 @@ export default function SceneThree() {
       }
 
       cube.rotation.y += 0.01;
+
+      updateRain();
 
       // Update grass shader time
       if (grassMaterialRef.current) {
@@ -269,8 +285,8 @@ export default function SceneThree() {
   return (
     <View style={styles.container}>
       <View style={styles.glView} {...tapResponder.panHandlers}>
-        <GLView 
-          style={{ flex: 1 }} 
+        <GLView
+          style={{ flex: 1 }}
           onContextCreate={onContextCreate}
         />
       </View>
