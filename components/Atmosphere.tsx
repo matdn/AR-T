@@ -36,7 +36,7 @@ export const createLUTPostMaterial = () => {
       tLUT: { value: lutTexture },
       uLUTSize: { value: lutSize },
       uLUTTiles: { value: lutTiles },
-      uIntensity: { value: 0.8 },
+      uIntensity: { value: 0 },
     },
     vertexShader: `
       varying vec2 vUv;
