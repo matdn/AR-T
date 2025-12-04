@@ -14,13 +14,16 @@ import {
   addGridLinesToPlanet, 
   createSkySphere, 
   createRandomRectangles,
-  createRectangle 
+  createRectangle,
+  createGrassGrid
 } from "../../utils/sceneObjects";
 import { 
   rotatePlanetWithCamera, 
   checkCollisions,
   placeRectangleOnSurface 
 } from "../../utils/sceneHelpers";
+import { updateGrassTime } from "../../utils/grassShader";
+import { updateGrassWrapping } from "../../utils/grassHelpers";
 
 export default function SceneThree() {
   const animationFrameId = useRef<number | null>(null);
@@ -41,6 +44,18 @@ export default function SceneThree() {
 
   const velocityRef = useRef<{ x: number; z: number }>({ x: 0, z: 0 });
   const [joystickPosition, setJoystickPosition] = useState({ x: 0, y: 0 });
+
+  // Grass refs
+  const grassGroupRef = useRef<THREE.Group | null>(null);
+  const grassMaterialRef = useRef<THREE.ShaderMaterial | null>(null);
+  const grassParamsRef = useRef<{
+    gridSize: number;
+    step: number;
+    halfWidth: number;
+    wrapDistance: number;
+  } | null>(null);
+  const prevRotRef = useRef({ x: 0, z: 0 });
+  const clockRef = useRef<THREE.Clock>(new THREE.Clock());
 
   const handleScreenTap = (event: GestureResponderEvent) => {
     if (!cameraRef.current || !planetRef.current || !raycasterRef.current) return;
@@ -143,6 +158,28 @@ export default function SceneThree() {
     const sky = createSkySphere();
     scene.add(sky);
 
+    // Create grass grid
+    const grassData = createGrassGrid({
+      gridSize: 8,
+      tileSize: 4,
+      spacing: 0.01,
+      instancesPerTile: 500,
+      bladeWidth: 0.1,
+      bladeHeight: 1,
+      minHeight: 0.2,
+      maxHeight: 0.6,
+    });
+    
+    scene.add(grassData.group);
+    grassGroupRef.current = grassData.group;
+    grassMaterialRef.current = grassData.material;
+    grassParamsRef.current = grassData.params;
+    
+    prevRotRef.current = {
+      x: planet.rotation.x,
+      z: planet.rotation.z,
+    };
+
 
     const geometry = new THREE.BoxGeometry(1, 1, 1);
     const material = new THREE.MeshStandardMaterial({ color: 0xff5555 });
@@ -166,6 +203,11 @@ export default function SceneThree() {
 
       cube.rotation.y += 0.01;
 
+      // Update grass shader time
+      if (grassMaterialRef.current) {
+        updateGrassTime(grassMaterialRef.current, clockRef.current.getElapsedTime());
+      }
+
       if (planetRef.current && cameraRef.current) {
         const currentRotationX = planetRef.current.rotation.x;
         const currentRotationY = planetRef.current.rotation.y;
@@ -186,6 +228,16 @@ export default function SceneThree() {
           planetRef.current.rotation.x = currentRotationX;
           planetRef.current.rotation.y = currentRotationY;
         }
+      }
+
+      // Update grass wrapping based on planet rotation
+      if (grassGroupRef.current && planetRef.current && grassParamsRef.current) {
+        prevRotRef.current = updateGrassWrapping(
+          grassGroupRef.current,
+          planetRef.current,
+          prevRotRef.current,
+          grassParamsRef.current
+        );
       }
 
       renderer.render(scene, camera);

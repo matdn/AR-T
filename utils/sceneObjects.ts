@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { createGrassShaderMaterial } from './grassShader';
 
 export function createPlanet(): THREE.Mesh {
   const geometry = new THREE.SphereGeometry(50, 64, 64);
@@ -135,4 +136,99 @@ export function createRandomRectangles(count: number = 20): THREE.Mesh[] {
   }
   
   return rectangles;
+}
+
+interface GrassGridConfig {
+  gridSize?: number;
+  tileSize?: number;
+  spacing?: number;
+  instancesPerTile?: number;
+  bladeWidth?: number;
+  bladeHeight?: number;
+  minHeight?: number;
+  maxHeight?: number;
+}
+
+export function createGrassGrid(config: GrassGridConfig = {}): {
+  group: THREE.Group;
+  material: THREE.ShaderMaterial;
+  params: {
+    gridSize: number;
+    step: number;
+    halfWidth: number;
+    wrapDistance: number;
+  };
+} {
+  const {
+    gridSize = 8,
+    tileSize = 4,
+    spacing = 0.01,
+    instancesPerTile = 500,
+    bladeWidth = 0.1,
+    bladeHeight = 1,
+    minHeight = 0.2,
+    maxHeight = 0.6,
+  } = config;
+
+  const grassMaterial = createGrassShaderMaterial({
+    sphereCenter: new THREE.Vector3(0, -50, 0),
+    sphereRadius: 50 - 0.1,
+  });
+
+  const gridGroup = new THREE.Group();
+  const step = tileSize + spacing;
+  const halfWidth = (gridSize * step) / 2;
+  const wrapDistance = gridSize * step;
+
+  const bladeGeo = new THREE.PlaneGeometry(bladeWidth, bladeHeight, 1, 4);
+  bladeGeo.translate(0, bladeHeight / 2, 0);
+
+  const dummy = new THREE.Object3D();
+
+  for (let i = 0; i < gridSize; i++) {
+    for (let j = 0; j < gridSize; j++) {
+      const grassPatch = new THREE.InstancedMesh(
+        bladeGeo,
+        grassMaterial,
+        instancesPerTile
+      );
+
+      grassPatch.position.set(
+        i * step - (gridSize - 1) * step * 0.5,
+        0,
+        j * step - (gridSize - 1) * step * 0.5
+      );
+
+      for (let k = 0; k < instancesPerTile; k++) {
+        dummy.position.set(
+          (Math.random() - 0.5) * tileSize,
+          0,
+          (Math.random() - 0.5) * tileSize
+        );
+
+        const randomHeight = minHeight + Math.random() * (maxHeight - minHeight);
+        dummy.scale.set(0.5, randomHeight, 1.0);
+        dummy.rotation.y = Math.random() * Math.PI * 2;
+
+        dummy.updateMatrix();
+        grassPatch.setMatrixAt(k, dummy.matrix);
+      }
+
+      grassPatch.instanceMatrix.needsUpdate = true;
+      gridGroup.add(grassPatch);
+    }
+  }
+
+  gridGroup.position.y = 0;
+
+  return {
+    group: gridGroup,
+    material: grassMaterial,
+    params: {
+      gridSize,
+      step,
+      halfWidth,
+      wrapDistance,
+    },
+  };
 }
