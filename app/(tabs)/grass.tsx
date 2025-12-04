@@ -5,6 +5,11 @@ import { Renderer, TextureLoader } from "expo-three";
 import React, { useEffect, useRef } from "react";
 import { StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import * as THREE from "three";
+import {
+  createEnvironmentMaterial,
+  createLUTPostMaterial,
+  createAtmosphereMeshes,
+} from "../../components/Atmosphere";
 
 const zee = new THREE.Vector3(0, 0, 1);
 const euler = new THREE.Euler();
@@ -16,7 +21,7 @@ const SPHERE_RADIUS = 15;
 const CAMERA_CONFIG = {
   fov: 60,
   near: 0.1,
-  far: 100,
+  far: 300,
   initialPos: { x: 0, y: 5, z: 0 },
 };
 
@@ -106,13 +111,15 @@ export default function SceneThree() {
   };
 
   const initializeLighting = (scene: THREE.Scene) => {
-    const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
+    const ambientLight = new THREE.AmbientLight(0xffffff, 1);
     scene.add(ambientLight);
 
     // const spotLight = new THREE.SpotLight(0xffffff, 20);
     // spotLight.position.set(0, 6, -5);
     // scene.add(spotLight);
   };
+
+
 
   const createGrassMaterial = () => {
     const grassTex = new TextureLoader().load(
@@ -217,6 +224,7 @@ export default function SceneThree() {
 
     const renderer = new Renderer({ gl });
     renderer.setSize(width, height);
+    renderer.setClearColor(SCENE_CONFIG.background);
 
     const scene = new THREE.Scene();
     scene.background = new THREE.Color(SCENE_CONFIG.background);
@@ -225,6 +233,18 @@ export default function SceneThree() {
     initializeDeviceCalibration();
 
     initializeLighting(scene);
+
+    // --- Initialiser l'atmosphère (LUT + environment) ---
+    const {
+      renderTarget,
+      postScene,
+      postCamera,
+      postMaterial,
+      envMesh,
+    } = createAtmosphereMeshes(scene, width, height);
+
+    // Optionnel selon ton workflow textures :
+    // renderer.outputEncoding = THREE.sRGBEncoding;
 
     const groundMaterial = createGrassMaterial();
     const groundPlane = new THREE.SphereGeometry(
@@ -311,6 +331,8 @@ export default function SceneThree() {
 
       camera.quaternion.slerp(targetQuat, 0.2);
 
+      envMesh.rotation.y += 0.001;
+
       groundMesh.rotation.x += 0.001;
       groundMesh.rotation.z += 0.0;
 
@@ -350,7 +372,16 @@ export default function SceneThree() {
         }
       });
 
+      // 1) Rendu de la scène dans le renderTarget
+      renderer.setRenderTarget(renderTarget);
+      renderer.clear();
       renderer.render(scene, camera);
+
+      // 2) Rendu du quad LUT sur l'écran
+      renderer.setRenderTarget(null);
+      postMaterial.uniforms.tDiffuse.value = renderTarget.texture;
+      renderer.render(postScene, postCamera);
+
       gl.endFrameEXP();
     };
 
