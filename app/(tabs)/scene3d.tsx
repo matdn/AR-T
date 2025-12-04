@@ -181,6 +181,7 @@ export default function SceneThree() {
         maxY: 30,
         fallSpeed: 1.5,
         resetThreshold: -5,
+        type: "rain",
       }
     );
 

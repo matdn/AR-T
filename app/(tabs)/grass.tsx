@@ -244,16 +244,31 @@ export default function SceneThree() {
       envMesh,
     } = createAtmosphereMeshes(scene, width, height);
 
+    // const { rainGroup, rainSprites, updateRain } = createWeatherSystem(
+    //   scene,
+    //   {
+    //     rainCount: 1000,
+    //     spreadX: 60,
+    //     spreadY: 40,
+    //     minY: 15,
+    //     maxY: 30,
+    //     fallSpeed: 1.5,
+    //     resetThreshold: -5,
+    //     type: "rain",
+    //   }
+    // );
+
     const { rainGroup, rainSprites, updateRain } = createWeatherSystem(
       scene,
       {
-        rainCount: 1000,
+        rainCount: 750,
         spreadX: 60,
         spreadY: 40,
         minY: 15,
         maxY: 30,
-        fallSpeed: 1.5,
-        resetThreshold: -5,
+        fallSpeed: 0.25,
+        resetThreshold: -10,
+        type: "snow",
       }
     );
 

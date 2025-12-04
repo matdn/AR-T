@@ -2,29 +2,31 @@ import { TextureLoader } from "expo-three";
 import * as THREE from "three";
 
 export interface RainSprite {
-  mesh: THREE.Sprite;
-  velocityY: number;
-  resetY: number;
+    mesh: THREE.Sprite;
+    velocityY: number;
+    resetY: number;
 }
 
 export interface WeatherConfig {
-  rainCount?: number;
-  spreadX?: number;
-  spreadY?: number;
-  minY?: number;
-  maxY?: number;
-  fallSpeed?: number;
-  resetThreshold?: number;
+    rainCount?: number;
+    spreadX?: number;
+    spreadY?: number;
+    minY?: number;
+    maxY?: number;
+    fallSpeed?: number;
+    resetThreshold?: number;
+    type?: "rain" | "snow";
 }
 
 const DEFAULT_CONFIG: Required<WeatherConfig> = {
-  rainCount: 200,
-  spreadX: 50,
-  spreadY: 50,
-  minY: 10,
-  maxY: 30,
-  fallSpeed: 3,
-  resetThreshold: -5,
+    rainCount: 200,
+    spreadX: 50,
+    spreadY: 50,
+    minY: 10,
+    maxY: 30,
+    fallSpeed: 3,
+    resetThreshold: -5,
+    type: "rain",
 };
 
 /**
@@ -35,70 +37,79 @@ const DEFAULT_CONFIG: Required<WeatherConfig> = {
  * @returns Un objet contenant le groupe de pluie et les sprites pour gestion
  */
 export const createWeatherSystem = (
-  scene: THREE.Scene,
-  config: WeatherConfig = {}
+    scene: THREE.Scene,
+    config: WeatherConfig = {}
 ) => {
-  const finalConfig = { ...DEFAULT_CONFIG, ...config };
+    const finalConfig = { ...DEFAULT_CONFIG, ...config };
 
-  const rainGroup = new THREE.Group();
-  const rainSprites: RainSprite[] = [];
-
-  const rainTexture = new TextureLoader().load(
-      require("../assets/textures/goutte.png")
+    const rainGroup = new THREE.Group();
+    const rainSprites: RainSprite[] = [];
+    var rainTexture = new TextureLoader().load(
+        require("../assets/textures/goutte.png")
     );
 
-  const material = new THREE.SpriteMaterial({
-    map: rainTexture,
-    sizeAttenuation: true,
-    transparent: true,
-  });
+    if (finalConfig.type === "snow") {
+        rainTexture = new TextureLoader().load(
+            require("../assets/textures/flocon.png")
+        );
+    } else {
+        rainTexture = new TextureLoader().load(
+            require("../assets/textures/goutte.png")
+        );
+    }
 
-  for (let i = 0; i < finalConfig.rainCount; i++) {
-    const sprite = new THREE.Sprite(material);
-
-    const x = (Math.random() - 0.5) * finalConfig.spreadX;
-    const y = Math.random() * finalConfig.spreadY + finalConfig.minY;
-    const z = (Math.random() - 0.5) * finalConfig.spreadX;
-
-    sprite.position.set(x, y, z);
-    sprite.scale.set(0.3, 0.3, 1);
-
-    rainGroup.add(sprite);
-
-    rainSprites.push({
-      mesh: sprite,
-      velocityY: -finalConfig.fallSpeed * (0.5 + Math.random() * 0.5),
-      resetY: y,
+    const material = new THREE.SpriteMaterial({
+        map: rainTexture,
+        sizeAttenuation: true,
+        transparent: true,
     });
-  }
 
-  scene.add(rainGroup);
+    for (let i = 0; i < finalConfig.rainCount; i++) {
+        const sprite = new THREE.Sprite(material);
 
-  /**
-   * Mettre à jour la pluie chaque frame
-   * @param deltaTime - Temps écoulé depuis la dernière frame
-   */
-  const updateRain = (deltaTime: number = 0.016) => {
-    rainSprites.forEach((rainSprite) => {
-      rainSprite.mesh.position.y += rainSprite.velocityY * deltaTime * 60; // 60fps baseline
+        const x = (Math.random() - 0.5) * finalConfig.spreadX;
+        const y = Math.random() * finalConfig.spreadY + finalConfig.minY;
+        const z = (Math.random() - 0.5) * finalConfig.spreadX;
 
-      if (rainSprite.mesh.position.y < finalConfig.resetThreshold) {
-        rainSprite.mesh.position.y = finalConfig.maxY + Math.random() * 5;
+        sprite.position.set(x, y, z);
+        sprite.scale.set(0.3, 0.3, 1);
 
-        rainSprite.mesh.position.x =
-          (Math.random() - 0.5) * finalConfig.spreadX;
-        rainSprite.mesh.position.z =
-          (Math.random() - 0.5) * finalConfig.spreadX;
-      }
-    });
-  };
+        rainGroup.add(sprite);
 
-  return {
-    rainGroup,
-    rainSprites,
-    updateRain,
-    material,
-  };
+        rainSprites.push({
+            mesh: sprite,
+            velocityY: -finalConfig.fallSpeed * (0.5 + Math.random() * 0.5),
+            resetY: y,
+        });
+    }
+
+    scene.add(rainGroup);
+
+    /**
+     * Mettre à jour la pluie chaque frame
+     * @param deltaTime - Temps écoulé depuis la dernière frame
+     */
+    const updateRain = (deltaTime: number = 0.016) => {
+        rainSprites.forEach((rainSprite) => {
+            rainSprite.mesh.position.y += rainSprite.velocityY * deltaTime * 60; // 60fps baseline
+
+            if (rainSprite.mesh.position.y < finalConfig.resetThreshold) {
+                rainSprite.mesh.position.y = finalConfig.maxY + Math.random() * 5;
+
+                rainSprite.mesh.position.x =
+                    (Math.random() - 0.5) * finalConfig.spreadX;
+                rainSprite.mesh.position.z =
+                    (Math.random() - 0.5) * finalConfig.spreadX;
+            }
+        });
+    };
+
+    return {
+        rainGroup,
+        rainSprites,
+        updateRain,
+        material,
+    };
 };
 
 /**
@@ -107,14 +118,14 @@ export const createWeatherSystem = (
  * @param textureUrl - URL ou chemin de la texture
  */
 export const setRainTexture = (
-  rainSprites: RainSprite[],
-  texture: THREE.Texture
+    rainSprites: RainSprite[],
+    texture: THREE.Texture
 ) => {
-  rainSprites.forEach((rainSprite) => {
-    if (rainSprite.mesh.material instanceof THREE.SpriteMaterial) {
-      rainSprite.mesh.material.map = texture;
-    }
-  });
+    rainSprites.forEach((rainSprite) => {
+        if (rainSprite.mesh.material instanceof THREE.SpriteMaterial) {
+            rainSprite.mesh.material.map = texture;
+        }
+    });
 };
 
 /**
@@ -123,12 +134,12 @@ export const setRainTexture = (
  * @param speedMultiplier - Multiplicateur de vitesse
  */
 export const setRainSpeed = (
-  rainSprites: RainSprite[],
-  speedMultiplier: number = 1
+    rainSprites: RainSprite[],
+    speedMultiplier: number = 1
 ) => {
-  rainSprites.forEach((rainSprite) => {
-    rainSprite.velocityY *= speedMultiplier;
-  });
+    rainSprites.forEach((rainSprite) => {
+        rainSprite.velocityY *= speedMultiplier;
+    });
 };
 
 /**
@@ -137,8 +148,8 @@ export const setRainSpeed = (
  * @param visible - État de visibilité
  */
 export const setRainVisible = (
-  rainGroup: THREE.Group,
-  visible: boolean
+    rainGroup: THREE.Group,
+    visible: boolean
 ) => {
-  rainGroup.visible = visible;
+    rainGroup.visible = visible;
 };
