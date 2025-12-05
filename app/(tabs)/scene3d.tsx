@@ -15,19 +15,19 @@ import { createAtmosphereMeshes } from "../../components/Atmosphere";
 import { useDeviceMotion } from "../../hooks/useDeviceMotion";
 import { useTapDetector } from "../../hooks/useTapDetector";
 import { setDeviceQuaternion } from "../../utils/quaternion";
-import { 
-  createPlanet, 
-  addGridLinesToPlanet, 
-  createSkySphere, 
+import {
+  createPlanet,
+  addGridLinesToPlanet,
+  createSkySphere,
   createRandomRectangles,
   createRectangle,
   createGrassGrid,
   createInnerAtmosphere
 } from "../../utils/sceneObjects";
-import { 
-  rotatePlanetWithCamera, 
+import {
+  rotatePlanetWithCamera,
   checkCollisions,
-  placeRectangleOnSurface 
+  placeRectangleOnSurface
 } from "../../utils/sceneHelpers";
 import { updateGrassTime } from "../../utils/grassShader";
 import { updateGrassWrapping } from "../../utils/grassHelpers";
@@ -535,12 +535,26 @@ export default function SceneThree() {
       minHeight: 0.2,
       maxHeight: 0.6,
     });
-    
+
+    const { rainGroup, rainSprites, updateRain } = createWeatherSystem(
+      scene,
+      {
+        rainCount: 1000,
+        spreadX: 60,
+        spreadY: 40,
+        minY: 15,
+        maxY: 30,
+        fallSpeed: 1.5,
+        resetThreshold: -5,
+        type: "rain",
+      }
+    );
+
     scene.add(grassData.group);
     grassGroupRef.current = grassData.group;
     grassMaterialRef.current = grassData.material;
     grassParamsRef.current = grassData.params;
-    
+
     prevRotRef.current = {
       x: planet.rotation.x,
       z: planet.rotation.z,

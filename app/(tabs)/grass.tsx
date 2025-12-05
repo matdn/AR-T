@@ -10,6 +10,7 @@ import {
   createLUTPostMaterial,
   createAtmosphereMeshes,
 } from "../../components/Atmosphere";
+import { createWeatherSystem } from "../../components/Weather";
 
 const zee = new THREE.Vector3(0, 0, 1);
 const euler = new THREE.Euler();
@@ -243,6 +244,34 @@ export default function SceneThree() {
       envMesh,
     } = createAtmosphereMeshes(scene, width, height);
 
+    // const { rainGroup, rainSprites, updateRain } = createWeatherSystem(
+    //   scene,
+    //   {
+    //     rainCount: 1000,
+    //     spreadX: 60,
+    //     spreadY: 40,
+    //     minY: 15,
+    //     maxY: 30,
+    //     fallSpeed: 1.5,
+    //     resetThreshold: -5,
+    //     type: "rain",
+    //   }
+    // );
+
+    const { rainGroup, rainSprites, updateRain } = createWeatherSystem(
+      scene,
+      {
+        rainCount: 750,
+        spreadX: 60,
+        spreadY: 40,
+        minY: 15,
+        maxY: 30,
+        fallSpeed: 0.25,
+        resetThreshold: -10,
+        type: "snow",
+      }
+    );
+
     // Optionnel selon ton workflow textures :
     // renderer.outputEncoding = THREE.sRGBEncoding;
 
@@ -337,6 +366,8 @@ export default function SceneThree() {
       groundMesh.rotation.z += 0.0;
 
       grassMaterial.uniforms.time.value = clock.getElapsedTime();
+
+      updateRain();
 
       const currentRotX = groundMesh.rotation.x;
       const currentRotZ = groundMesh.rotation.z;
