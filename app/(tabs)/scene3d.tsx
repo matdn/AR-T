@@ -35,6 +35,7 @@ import {
   renderWithAtmosphere, 
   type AtmosphereRenderData 
 } from "../../utils/atmosphereHelpers";
+import { createWeatherSystem } from "@/components/Weather";
 
 export default function SceneThree() {
   const animationFrameId = useRef<number | null>(null);
@@ -75,6 +76,13 @@ export default function SceneThree() {
 
   const atmosphereDataRef = useRef<AtmosphereRenderData | null>(null);
   const innerAtmosphereRef = useRef<THREE.Group | null>(null);
+
+  // Weather systems (rain/snow)
+  const weatherRef = useRef<{
+    rain?: { group: THREE.Group; update: (dt?: number) => void; material: THREE.SpriteMaterial };
+    snow?: { group: THREE.Group; update: (dt?: number) => void; material: THREE.SpriteMaterial };
+  }>({});
+  const [weatherMode, setWeatherMode] = useState<'rain' | 'snow' | 'none'>('snow');
 
   // Image picker state
   const [pickerVisible, setPickerVisible] = useState(false);
@@ -429,6 +437,22 @@ export default function SceneThree() {
         grassMaterialRef.current.dispose();
         grassMaterialRef.current = null;
       }
+
+      // Cleanup weather groups/materials
+      const scene = sceneRef.current;
+      if (scene) {
+        if (weatherRef.current.rain) {
+          scene.remove(weatherRef.current.rain.group);
+          try { weatherRef.current.rain.material.map?.dispose?.(); } catch {}
+          try { weatherRef.current.rain.material.dispose?.(); } catch {}
+        }
+        if (weatherRef.current.snow) {
+          scene.remove(weatherRef.current.snow.group);
+          try { weatherRef.current.snow.material.map?.dispose?.(); } catch {}
+          try { weatherRef.current.snow.material.dispose?.(); } catch {}
+        }
+        weatherRef.current = {};
+      }
     };
   }, [sceneKey]); // Re-run cleanup when scene reloads
 
@@ -536,19 +560,45 @@ export default function SceneThree() {
       maxHeight: 0.6,
     });
 
-    const { rainGroup, rainSprites, updateRain } = createWeatherSystem(
-      scene,
-      {
-        rainCount: 1000,
-        spreadX: 60,
-        spreadY: 40,
-        minY: 15,
-        maxY: 30,
-        fallSpeed: 1.5,
-        resetThreshold: -5,
-        type: "rain",
-      }
-    );
+    // Weather: Rain system (ajusté pour être visible autour de la caméra qui est à Y=2)
+    const rainSystem = createWeatherSystem(scene, {
+      rainCount: 1000,
+      spreadX: 30,
+      spreadY: 20,
+      minY: 8,
+      maxY: 15,
+      fallSpeed: 5.0,
+      resetThreshold: -2,
+      type: 'rain',
+    });
+
+    // Weather: Snow system (ajusté pour être visible autour de la caméra)
+    const snowSystem = createWeatherSystem(scene, {
+      rainCount: 750,
+      spreadX: 30,
+      spreadY: 20,
+      minY: 8,
+      maxY: 15,
+      fallSpeed: 1.5,
+      resetThreshold: -2,
+      type: 'snow',
+    });
+
+    // Par défaut: montrer la neige, cacher la pluie
+    rainSystem.rainGroup.visible = false;
+    snowSystem.rainGroup.visible = true;
+
+    weatherRef.current = {
+      rain: { group: rainSystem.rainGroup, update: rainSystem.updateRain, material: rainSystem.material as any },
+      snow: { group: snowSystem.rainGroup, update: snowSystem.updateRain, material: snowSystem.material as any },
+    };
+
+    // Apply initial weather mode
+    const applyWeatherVisibility = (mode: 'rain' | 'snow' | 'none') => {
+      if (weatherRef.current.rain) weatherRef.current.rain.group.visible = (mode === 'rain');
+      if (weatherRef.current.snow) weatherRef.current.snow.group.visible = (mode === 'snow');
+    };
+    applyWeatherVisibility(weatherMode);
 
     scene.add(grassData.group);
     grassGroupRef.current = grassData.group;
@@ -569,8 +619,10 @@ export default function SceneThree() {
 
     const renderLoop = () => {
       animationFrameId.current = requestAnimationFrame(renderLoop);
+      
+    
 
-      const { alpha, beta, gamma } = rotationRef.current;
+     const { alpha, beta, gamma } = rotationRef.current;
       setDeviceQuaternion(deviceQuatRef.current, alpha, beta, gamma, 0, isLandscape);
 
       const targetQuat = new THREE.Quaternion()
@@ -592,6 +644,22 @@ export default function SceneThree() {
       // Update grass shader time
       if (grassMaterialRef.current) {
         updateGrassTime(grassMaterialRef.current, clockRef.current.getElapsedTime());
+      }
+
+      // Update weather (sans deltaTime comme dans grass.tsx)
+      if (weatherRef.current.rain?.group.visible) {
+        try { 
+          weatherRef.current.rain.update(); 
+        } catch (e) {
+          console.error('[Rain update error]', e);
+        }
+      }
+      if (weatherRef.current.snow?.group.visible) {
+        try { 
+          weatherRef.current.snow.update(); 
+        } catch (e) {
+          console.error('[Snow update error]', e);
+        }
       }
 
       if (planetRef.current && cameraRef.current) {
@@ -639,7 +707,7 @@ export default function SceneThree() {
       // Render with atmosphere post-processing
       renderWithAtmosphere(renderer, scene, camera, atmosphereDataRef.current, gl);
     };
-
+    
     renderLoop();
   };
 
@@ -691,6 +759,40 @@ export default function SceneThree() {
         onMove={handleJoystickMove}
         onRelease={handleJoystickRelease}
       />
+
+      {/* Weather toggle */}
+      <View style={styles.weatherContainer}>
+        <TouchableOpacity
+          style={[styles.weatherBtn, weatherMode === 'rain' && styles.weatherBtnActive]}
+          onPress={() => {
+            setWeatherMode('rain');
+            if (weatherRef.current.rain) weatherRef.current.rain.group.visible = true;
+            if (weatherRef.current.snow) weatherRef.current.snow.group.visible = false;
+          }}
+        >
+          <Text style={styles.weatherBtnText}>Pluie</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={[styles.weatherBtn, weatherMode === 'snow' && styles.weatherBtnActive]}
+          onPress={() => {
+            setWeatherMode('snow');
+            if (weatherRef.current.rain) weatherRef.current.rain.group.visible = false;
+            if (weatherRef.current.snow) weatherRef.current.snow.group.visible = true;
+          }}
+        >
+          <Text style={styles.weatherBtnText}>Neige</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={[styles.weatherBtn, weatherMode === 'none' && styles.weatherBtnActive]}
+          onPress={() => {
+            setWeatherMode('none');
+            if (weatherRef.current.rain) weatherRef.current.rain.group.visible = false;
+            if (weatherRef.current.snow) weatherRef.current.snow.group.visible = false;
+          }}
+        >
+          <Text style={styles.weatherBtnText}>Aucun</Text>
+        </TouchableOpacity>
+      </View>
 
       {/* Modal de sélection d'image */}
       <Modal
@@ -778,6 +880,30 @@ const styles = StyleSheet.create({
     backgroundColor: '#3b404c',
   },
   modalButtonText: {
+    color: 'white',
+    fontWeight: '600',
+  },
+  weatherContainer: {
+    position: 'absolute',
+    top: 60,
+    right: 16,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    borderRadius: 10,
+    padding: 8,
+    flexDirection: 'row',
+    gap: 8,
+  },
+  weatherBtn: {
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 8,
+    backgroundColor: '#2f3440',
+    marginHorizontal: 4,
+  },
+  weatherBtnActive: {
+    backgroundColor: '#5562ea',
+  },
+  weatherBtnText: {
     color: 'white',
     fontWeight: '600',
   },
