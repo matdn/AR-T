@@ -31,8 +31,8 @@ export default function Joystick({ position, onMove, onRelease }: JoystickProps)
         }
         
         onMove({
-          x: finalX / maxDistance,
-          z: -finalY / maxDistance,
+          x: -finalX / maxDistance,  // Inversé : droite devient négatif
+          z: finalY / maxDistance,    // Inversé : haut devient positif
         });
       },
       

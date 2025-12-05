@@ -4,9 +4,10 @@ import { createGrassShaderMaterial } from './grassShader';
 export function createPlanet(): THREE.Mesh {
   const geometry = new THREE.SphereGeometry(50, 64, 64);
   const material = new THREE.MeshStandardMaterial({ 
-    color: 0xffffff,
+    color: 0x88cc88, 
     roughness: 0.8,
-    metalness: 0.2
+    metalness: 0.2,
+    wireframe: false
   });
   const planet = new THREE.Mesh(geometry, material);
   planet.position.set(0, -50, 0);
@@ -74,45 +75,43 @@ export function createSkySphere(): THREE.Mesh {
   return sky;
 }
 
-export function createRectangle(
-  position: THREE.Vector3,
-  normal: THREE.Vector3,
-  heightAboveSurface: number = 2
-): THREE.Mesh {
-  const wallMaterial = new THREE.MeshStandardMaterial({ 
+export function createRectangle( position: THREE.Vector3, normal: THREE.Vector3, heightAboveSurface: number = 2 ): THREE.Mesh {
+  const wallMaterial = new THREE.MeshStandardMaterial({
     color: 0x000000,
     roughness: 0.7,
-    metalness: 0.3
+    metalness: 0.3,
+    side: THREE.DoubleSide,
   });
 
   const rectWidth = 3;
   const rectHeight = 0.2;
   const rectDepth = 3;
-  
   const geometry = new THREE.BoxGeometry(rectWidth, rectHeight, rectDepth);
   const rectangle = new THREE.Mesh(geometry, wallMaterial);
-  
+
   rectangle.position.set(
     position.x + normal.x * heightAboveSurface,
     position.y + normal.y * heightAboveSurface,
     position.z + normal.z * heightAboveSurface
   );
-  
+
   const localZ = normal.clone();
   const worldUp = new THREE.Vector3(0, 1, 0);
   const localX = new THREE.Vector3().crossVectors(worldUp, localZ);
-  
   if (localX.lengthSq() < 0.001) {
     localX.set(1, 0, 0).cross(localZ);
   }
   localX.normalize();
-  
   const localY = new THREE.Vector3().crossVectors(localZ, localX).normalize();
-  
   const matrix = new THREE.Matrix4();
   matrix.makeBasis(localX, localY, localZ);
   rectangle.rotation.setFromRotationMatrix(matrix);
-  
+
+  // Améliorer les performances du raycaster et éviter un culottage incorrect
+  geometry.computeBoundingSphere();
+  geometry.computeBoundingBox();
+  rectangle.frustumCulled = false;
+
   return rectangle;
 }
 
@@ -123,7 +122,7 @@ export function createRandomRectangles(count: number = 20): THREE.Mesh[] {
     const theta = Math.random() * Math.PI * 2;
     const phi = Math.random() * Math.PI;
     
-    const radius = 50;
+    const radius = 52; // Au-dessus de la planète (rayon 50)
     const x = radius * Math.sin(phi) * Math.cos(theta);
     const y = radius * Math.cos(phi);
     const z = radius * Math.sin(phi) * Math.sin(theta);
@@ -132,6 +131,17 @@ export function createRandomRectangles(count: number = 20): THREE.Mesh[] {
     const normal = position.clone().normalize();
     
     const rectangle = createRectangle(position, normal);
+    
+    // Stocker les infos pour l'animation et l'interaction
+    rectangle.userData = {
+      basePosition: position.clone(),
+      floatOffset: Math.random() * Math.PI * 2, // Phase aléatoire pour l'animation
+      floatSpeed: 0.5 + Math.random() * 0.5, // Vitesse de flottement variable
+      floatAmplitude: 0.1 + Math.random() * 0.15, // Amplitude variable
+      id: i,
+      message: `Rectangle ${i + 1}`
+    };
+    
     rectangles.push(rectangle);
   }
   
@@ -231,4 +241,58 @@ export function createGrassGrid(config: GrassGridConfig = {}): {
       wrapDistance,
     },
   };
+}
+
+export function createInnerAtmosphere(): THREE.Group {
+  const radius = 72; 
+  const gridGroup = new THREE.Group();
+  
+  const material = new THREE.LineBasicMaterial({
+    color: 0x000000,
+    transparent: true,
+    opacity: 0.5,
+    depthWrite: false,
+    linewidth: 3 
+  });
+  
+  const latSegments = 20;
+  const lonSegments = 40; 
+  
+  for (let i = 0; i <= latSegments; i++) {
+    const phi = (Math.PI * i) / latSegments;
+    const points = [];
+    
+    for (let j = 0; j <= 64; j++) {
+      const theta = (2 * Math.PI * j) / 64;
+      const x = radius * Math.sin(phi) * Math.cos(theta);
+      const y = radius * Math.cos(phi);
+      const z = radius * Math.sin(phi) * Math.sin(theta);
+      points.push(new THREE.Vector3(x, y, z));
+    }
+    
+    const geometry = new THREE.BufferGeometry().setFromPoints(points);
+    const line = new THREE.Line(geometry, material);
+    gridGroup.add(line);
+  }
+  
+  for (let i = 0; i < lonSegments; i++) {
+    const theta = (2 * Math.PI * i) / lonSegments;
+    const points = [];
+    
+    for (let j = 0; j <= 64; j++) {
+      const phi = (Math.PI * j) / 64;
+      const x = radius * Math.sin(phi) * Math.cos(theta);
+      const y = radius * Math.cos(phi);
+      const z = radius * Math.sin(phi) * Math.sin(theta);
+      points.push(new THREE.Vector3(x, y, z));
+    }
+    
+    const geometry = new THREE.BufferGeometry().setFromPoints(points);
+    const line = new THREE.Line(geometry, material);
+    gridGroup.add(line);
+  }
+  
+  gridGroup.position.set(0, -50, 0);
+  
+  return gridGroup;
 }

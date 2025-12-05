@@ -10,9 +10,15 @@ export function setDeviceQuaternion(
   alpha: number,
   beta: number,
   gamma: number,
-  orient: number
+  orient: number,
+  isLandscape: boolean = true
 ) {
-  euler.set(beta, alpha, -gamma, "YXZ");
+  if (isLandscape) {
+    euler.set(-gamma, -alpha, beta, "YXZ");
+  } else {
+    euler.set(beta, alpha, -gamma, "YXZ");
+  }
+  
   quaternion.setFromEuler(euler);
   quaternion.multiply(q1);
   quaternion.multiply(q0.setFromAxisAngle(zee, -orient));
