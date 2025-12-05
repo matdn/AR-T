@@ -95,11 +95,26 @@ export interface AtmosphereConfig {
   renderTarget?: THREE.WebGLRenderTarget;
 }
 
+export interface AtmosphereOptions {
+  planetPosition?: THREE.Vector3;
+  envRadius?: number;
+  enableLUT?: boolean;
+  lutIntensity?: number;
+}
+
 export const createAtmosphereMeshes = (
   scene: THREE.Scene,
   width: number,
-  height: number
+  height: number,
+  options: AtmosphereOptions = {}
 ) => {
+  const {
+    planetPosition = new THREE.Vector3(0, -50, 0),
+    envRadius = 200,
+    enableLUT = true,
+    lutIntensity = 0.6,
+  } = options;
+
   const renderTarget = new THREE.WebGLRenderTarget(width, height, {
     depthBuffer: true,
     stencilBuffer: false,
@@ -109,6 +124,8 @@ export const createAtmosphereMeshes = (
   const postCamera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
 
   const postMaterial = createLUTPostMaterial();
+  postMaterial.uniforms.uIntensity.value = lutIntensity;
+  
   const postQuad = new THREE.Mesh(
     new THREE.PlaneGeometry(2, 2),
     postMaterial
@@ -116,9 +133,9 @@ export const createAtmosphereMeshes = (
   postScene.add(postQuad);
 
   const envMaterial = createEnvironmentMaterial();
-  const envGeo = new THREE.SphereGeometry(100, 64, 32);
+  const envGeo = new THREE.SphereGeometry(envRadius, 64, 32);
   const envMesh = new THREE.Mesh(envGeo, envMaterial);
-  envMesh.position.set(0, 0, 0);
+  envMesh.position.copy(planetPosition);
   scene.add(envMesh);
 
   return {
@@ -127,5 +144,6 @@ export const createAtmosphereMeshes = (
     postCamera,
     postMaterial,
     envMesh,
+    enableLUT,
   };
 };

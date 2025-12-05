@@ -1,0 +1,41 @@
+name: Get Build
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  fingerprint:
+    type: fingerprint
+    environment: development
+
+  android_get_build:
+    needs: [fingerprint]
+    type: get-build
+    params:
+      fingerprint_hash: ${{ needs.fingerprint.outputs.android_fingerprint_hash }}
+      platform: android
+  
+  android_build:
+    needs: [android_get_build]
+    if: ${{ !needs.android_get_build.outputs.build_id }}
+    type: build
+    params:
+      platform: android
+      profile: development-simulator
+
+  ios_get_build:
+    needs: [fingerprint]
+    type: get-build
+    params:
+      fingerprint_hash: ${{ needs.fingerprint.outputs.ios_fingerprint_hash }}
+      platform: ios
+
+  ios_build:
+    needs: [ios_get_build]
+    if: ${{ !needs.ios_get_build.outputs.build_id }}
+    type: build
+    params:
+      platform: ios
+      profile: development-simulator
