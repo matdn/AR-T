@@ -1,7 +1,10 @@
 import { GLView, type ExpoWebGLRenderingContext } from "expo-gl";
-import { Renderer } from "expo-three";
+import { Renderer, TextureLoader } from "expo-three";
 import React, { useEffect, useRef, useState } from "react";
-import { StyleSheet, View, GestureResponderEvent } from "react-native";
+import { StyleSheet, View, GestureResponderEvent, Modal, TouchableOpacity, Text } from "react-native";
+import * as ImagePicker from 'expo-image-picker';
+import { Asset } from 'expo-asset';
+import * as ImageManipulator from 'expo-image-manipulator';
 import * as THREE from "three";
 import * as ScreenOrientation from 'expo-screen-orientation';
 
@@ -73,6 +76,71 @@ export default function SceneThree() {
   const atmosphereDataRef = useRef<AtmosphereRenderData | null>(null);
   const innerAtmosphereRef = useRef<THREE.Group | null>(null);
 
+  // Image picker state
+  const [pickerVisible, setPickerVisible] = useState(false);
+  const [selectedRect, setSelectedRect] = useState<THREE.Mesh | null>(null);
+
+  const applyTextureToRect = async (rect: THREE.Mesh, uri: string) => {
+    try {
+  const asset = Asset.fromURI(uri);
+      // Ensure the asset is loaded
+      await asset.downloadAsync();
+      // Déterminer la source locale de l'image
+      const source = asset.localUri ?? asset.uri ?? uri;
+
+      // Redimensionner pour éviter des textures trop grandes (prévenir pertes de contexte GL)
+  const MAX_DIM = 1024; // Taille max pour éviter pertes de contexte GL sur mobile
+      let processedUri = source;
+      try {
+        const manipulated = await ImageManipulator.manipulateAsync(
+          source,
+          [{ resize: { width: MAX_DIM } }], // conserve le ratio
+          { compress: 0.9, format: ImageManipulator.SaveFormat.JPEG }
+        );
+        if (manipulated?.uri) processedUri = manipulated.uri;
+      } catch (err) {
+        console.warn('Redimensionnement image échoué, utilisation de la source originale', err);
+      }
+
+      // Charger la texture via expo-three TextureLoader
+      const texture = await new TextureLoader().loadAsync(processedUri);
+      // Paramètres sûrs pour NPOT
+      texture.wrapS = THREE.ClampToEdgeWrapping;
+      texture.wrapT = THREE.ClampToEdgeWrapping;
+      texture.minFilter = THREE.LinearFilter;
+      texture.magFilter = THREE.LinearFilter;
+      texture.generateMipmaps = false;
+      texture.flipY = false;
+      // Appliquer la texture (gère Material ou Material[])
+      const mat = rect.material;
+      if (Array.isArray(mat)) {
+        mat.forEach(m => {
+          const ms = m as THREE.MeshStandardMaterial;
+          // libérer l'ancienne map si présente
+          const prevMap = (ms as any).map as THREE.Texture | undefined;
+          if (prevMap && typeof prevMap.dispose === 'function') {
+            try { prevMap.dispose(); } catch {}
+          }
+          (ms as any).map = texture;
+          ms.needsUpdate = true;
+          // éviter la teinte par la couleur de base
+          try { ms.color?.set?.(0xffffff as any); } catch {}
+        });
+      } else {
+        const ms = mat as THREE.MeshStandardMaterial;
+        const prevMap = (ms as any).map as THREE.Texture | undefined;
+        if (prevMap && typeof prevMap.dispose === 'function') {
+          try { prevMap.dispose(); } catch {}
+        }
+        (ms as any).map = texture;
+        ms.needsUpdate = true;
+        try { ms.color?.set?.(0xffffff as any); } catch {}
+      }
+    } catch (e) {
+      console.warn('Échec du chargement de la texture depuis l\'URI:', uri, e);
+    }
+  };
+
   const handleScreenTap = (event: GestureResponderEvent) => {
     if (!cameraRef.current || !planetRef.current || !raycasterRef.current) return;
 
@@ -100,7 +168,10 @@ export default function SceneThree() {
   // Ajout d'un biais vertical pour compenser un raycast trop bas
   mouse.y = (-(y / h) * 2 + 1) + tapYBiasNDC;
 
-    raycasterRef.current.setFromCamera(mouse, cameraRef.current);
+  // Étendre la portée du raycaster et recalculer depuis la caméra
+  raycasterRef.current.near = 0.01;
+  raycasterRef.current.far = 1000;
+  raycasterRef.current.setFromCamera(mouse, cameraRef.current);
     
   console.log('Mouse coords:', mouse.x, mouse.y, 'biasNDC=', tapYBiasNDC, ' (w,h)=', w, h);
     
@@ -168,19 +239,30 @@ export default function SceneThree() {
       }
     }
     
-    if (rectangleIntersects.length > 0) {
-      const clickedRect = rectangleIntersects[0].object as THREE.Mesh;
-      console.log('Rectangle cliqué (direct):', clickedRect.userData);
-      
-      // Changer la couleur en rouge
-      if (clickedRect.material && 'color' in clickedRect.material) {
-        (clickedRect.material as THREE.MeshStandardMaterial).color.setHex(0xff0000);
+    // Désambiguïsation: combiner hits rectangles + proxies et prendre le plus proche
+    if (rectangleIntersects.length > 0 || proxyIntersects.length > 0) {
+      const rayHits: Array<{ type: 'rect' | 'proxy'; mesh: THREE.Mesh; distance: number }> = [];
+      rectangleIntersects.forEach(hit => {
+        rayHits.push({ type: 'rect', mesh: hit.object as THREE.Mesh, distance: hit.distance });
+      });
+      proxyIntersects.forEach(hit => {
+        const proxy = hit.object as THREE.Mesh & { userData: any };
+        const target = proxy.userData?.target as THREE.Mesh | undefined;
+        // Si le proxy pointe un rectangle, on convertit en hit rectangle, sinon on garde proxy
+        rayHits.push({ type: target ? 'rect' : 'proxy', mesh: (target ?? hit.object) as THREE.Mesh, distance: hit.distance });
+      });
+      rayHits.sort((a, b) => a.distance - b.distance);
+      const nearestRectHit = rayHits.find(h => h.type === 'rect');
+      const chosen = nearestRectHit ?? rayHits[0];
+      if (chosen) {
+        const clickedRect = chosen.mesh as THREE.Mesh;
+        console.log('[Sélection] Type:', nearestRectHit ? 'rectangle' : 'proxy', '| distance =', chosen.distance);
+        console.log('UserData:', clickedRect.userData);
+        // Ouvrir le picker pour choisir une image
+        setSelectedRect(clickedRect);
+        setPickerVisible(true);
+        return;
       }
-      
-      if (clickedRect.userData.message) {
-        alert(clickedRect.userData.message);
-      }
-      return;
     }
     
   if (intersects.length > 0) {
@@ -206,19 +288,31 @@ export default function SceneThree() {
       }
     }
     
-    // Essayer via proxy si aucun rectangle direct n'est touché
-    if (proxyIntersects.length > 0) {
-      const proxyObj = proxyIntersects[0].object as THREE.Mesh & { userData: any };
-      const targetRect = proxyObj.userData?.target as THREE.Mesh | undefined;
-      if (targetRect) {
-        console.log('Sélection via proxy:', targetRect.userData);
-        if (targetRect.material && 'color' in targetRect.material) {
-          (targetRect.material as THREE.MeshStandardMaterial).color.setHex(0xff0000);
+    // Fallback avancé: choisir le rectangle dont le centre est le plus proche du rayon
+    if (wallsRef.current.length > 0) {
+      const ray = raycasterRef.current.ray;
+      let best: { rect: THREE.Mesh; center: THREE.Vector3; dist: number } | null = null;
+      for (let i = 0; i < wallsRef.current.length; i++) {
+        const rect = wallsRef.current[i];
+        const bbox = new THREE.Box3().setFromObject(rect);
+        const center = new THREE.Vector3();
+        bbox.getCenter(center);
+        const dist = ray.distanceToPoint(center);
+        if (!best || dist < best.dist) best = { rect, center, dist };
+      }
+      if (best) {
+        // Seuil dynamique approximatif basé sur la taille de la bbox
+        const size = new THREE.Vector3();
+        new THREE.Box3().setFromObject(best.rect).getSize(size);
+        const diag = size.length();
+        const threshold = Math.max(1.0, diag * 0.45); // marge pour faciliter les sélections lointaines
+        if (best.dist <= threshold) {
+          console.log('[Sélection] fallback par centre proche | dist =', best.dist, ' | seuil =', threshold);
+          const clickedRect = best.rect;
+          setSelectedRect(clickedRect);
+          setPickerVisible(true);
+          return;
         }
-        if (targetRect.userData?.message) {
-          alert(targetRect.userData.message);
-        }
-        return;
       }
     }
 
@@ -253,11 +347,14 @@ export default function SceneThree() {
       wallsRef.current.push(rectangle);
 
       // Créer et attacher un proxy pour ce nouveau rectangle
-      const proxyGeo = new THREE.SphereGeometry(1.5, 12, 12);
+      const proxyGeo = new THREE.SphereGeometry(0.9, 12, 12);
       const proxyMat = new THREE.MeshBasicMaterial({ color: 0x000000, transparent: true, opacity: 0, depthWrite: false });
       const proxy = new THREE.Mesh(proxyGeo, proxyMat);
       proxy.userData = { target: rectangle };
       proxy.frustumCulled = false;
+      // Décalage léger vers l'extérieur le long de la normale pour réduire les chevauchements
+      const normal = result.normal.clone().normalize();
+      proxy.position.addScaledVector(normal, 0.2);
       rectangle.add(proxy);
       hitProxiesRef.current.push(proxy);
     }
@@ -399,11 +496,15 @@ export default function SceneThree() {
     const proxies: THREE.Mesh[] = [];
     rectangles.forEach(rect => {
       planet.add(rect);
-      const proxyGeo = new THREE.SphereGeometry(1.5, 12, 12);
+      const proxyGeo = new THREE.SphereGeometry(0.9, 12, 12);
       const proxyMat = new THREE.MeshBasicMaterial({ color: 0x000000, transparent: true, opacity: 0, depthWrite: false });
       const proxy = new THREE.Mesh(proxyGeo, proxyMat);
       proxy.userData = { target: rect };
       proxy.frustumCulled = false;
+      // Décaler le proxy vers l'extérieur le long de la normale monde pour éviter les confusions
+      const worldPos = rect.getWorldPosition(new THREE.Vector3());
+      const normal = worldPos.clone().normalize();
+      proxy.position.addScaledVector(normal, 0.2);
       rect.add(proxy);
       proxies.push(proxy);
     });
@@ -576,6 +677,47 @@ export default function SceneThree() {
         onMove={handleJoystickMove}
         onRelease={handleJoystickRelease}
       />
+
+      {/* Modal de sélection d'image */}
+      <Modal
+        visible={pickerVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setPickerVisible(false)}
+      >
+        <View style={styles.modalBackdrop}>
+          <View style={styles.modalCard}>
+            <Text style={styles.modalTitle}>Choisir une image</Text>
+            <TouchableOpacity
+              style={styles.modalButton}
+              onPress={async () => {
+                try {
+                  const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+                  if (status !== 'granted') {
+                    console.warn('Permission bibliothèque refusée');
+                    return;
+                  }
+                  const result = await ImagePicker.launchImageLibraryAsync({
+                    mediaTypes: ImagePicker.MediaTypeOptions.Images,
+                    quality: 1,
+                  });
+                  if (!result.canceled && result.assets?.[0]?.uri && selectedRect) {
+                    await applyTextureToRect(selectedRect, result.assets[0].uri);
+                    setPickerVisible(false);
+                  }
+                } catch (e) {
+                  console.warn('Erreur sélection image:', e);
+                }
+              }}
+            >
+              <Text style={styles.modalButtonText}>Ouvrir la galerie</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={[styles.modalButton, styles.modalCancel]} onPress={() => setPickerVisible(false)}>
+              <Text style={styles.modalButtonText}>Annuler</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -587,5 +729,42 @@ const styles = StyleSheet.create({
   },
   glView: {
     flex: 1,
+  },
+  modalBackdrop: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  modalCard: {
+    width: 280,
+    backgroundColor: '#1d1f24',
+    borderRadius: 12,
+    padding: 16,
+  },
+  modalTitle: {
+    color: 'white',
+    fontWeight: '600',
+    marginBottom: 12,
+    fontSize: 16,
+    textAlign: 'center',
+  },
+  modalButton: {
+    backgroundColor: '#2f3440',
+    paddingVertical: 10,
+    borderRadius: 8,
+    alignItems: 'center',
+    marginTop: 8,
+  },
+  modalCancel: {
+    backgroundColor: '#3b404c',
+  },
+  modalButtonText: {
+    color: 'white',
+    fontWeight: '600',
   },
 });
