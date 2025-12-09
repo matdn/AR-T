@@ -2,6 +2,7 @@ import { GLView, type ExpoWebGLRenderingContext } from "expo-gl";
 import { Renderer, TextureLoader } from "expo-three";
 import React, { useEffect, useRef, useState } from "react";
 import { StyleSheet, View, GestureResponderEvent, Modal, TouchableOpacity, Text } from "react-native";
+import Slider from "@react-native-community/slider";
 import * as ImagePicker from 'expo-image-picker';
 import { Asset } from 'expo-asset';
 import * as ImageManipulator from 'expo-image-manipulator';
@@ -30,7 +31,7 @@ import {
   placeRectangleOnSurface
 } from "../../utils/sceneHelpers";
 import { updateGrassTime } from "../../utils/grassShader";
-import { updateGrassWrapping } from "../../utils/grassHelpers";
+import { updateGrassWrapping, updateGrassShaderFog } from "../../utils/grassHelpers";
 import { 
   renderWithAtmosphere, 
   type AtmosphereRenderData 
@@ -83,6 +84,10 @@ export default function SceneThree() {
     snow?: { group: THREE.Group; update: (dt?: number) => void; material: THREE.SpriteMaterial };
   }>({});
   const [weatherMode, setWeatherMode] = useState<'rain' | 'snow' | 'none'>('snow');
+
+  // Fog control
+  const [fogDensity, setFogDensity] = useState(0.1);
+  const fogDensityRef = useRef(0.1);
 
   // Image picker state
   const [pickerVisible, setPickerVisible] = useState(false);
@@ -413,6 +418,16 @@ export default function SceneThree() {
     }
   };
 
+  const handleFogDensityChange = (value: number) => {
+    setFogDensity(value);
+    fogDensityRef.current = value;
+    
+    // Mettre à jour le fog de la scène en temps réel
+    if (sceneRef.current && sceneRef.current.fog instanceof THREE.FogExp2) {
+      (sceneRef.current.fog as THREE.FogExp2).density = value;
+    }
+  };
+
   useEffect(() => {
     ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.LANDSCAPE_LEFT);
   }, []);
@@ -475,6 +490,10 @@ export default function SceneThree() {
     const scene = new THREE.Scene();
     sceneRef.current = scene;
     scene.background = new THREE.Color(0xffffff);
+
+    // Ajouter du fog exponentiel à la scène (plus visible)
+    const fogColor = 0xFFFFFF; // Couleur bleu ciel plus légère
+    scene.fog = new THREE.FogExp2(fogColor, fogDensityRef.current); // Utiliser la valeur du ref
 
     const camera = new THREE.PerspectiveCamera(60, width / height, 0.1, 100);
     cameraRef.current = camera;
@@ -540,7 +559,7 @@ export default function SceneThree() {
       planetPosition: new THREE.Vector3(0, -50, 0),
       envRadius: 100,
       enableLUT: true,
-      lutIntensity: 0.6,
+      lutIntensity: 0,
     });
     // S'assurer que l'atmosphère est rendue en premier
     if (atmosphereData.envMesh) {
@@ -642,8 +661,10 @@ export default function SceneThree() {
       }
 
       // Update grass shader time
-      if (grassMaterialRef.current) {
+      if (grassMaterialRef.current && sceneRef.current) {
         updateGrassTime(grassMaterialRef.current, clockRef.current.getElapsedTime());
+        // Synchroniser le fog du shader avec la scène
+        updateGrassShaderFog(grassMaterialRef.current, sceneRef.current);
       }
 
       // Update weather (sans deltaTime comme dans grass.tsx)
@@ -794,6 +815,22 @@ export default function SceneThree() {
         </TouchableOpacity>
       </View>
 
+      {/* Fog density control */}
+      <View style={styles.fogContainer}>
+        <Text style={styles.fogLabel}>Fog: {fogDensity.toFixed(2)}</Text>
+        <Slider
+          style={styles.fogSlider}
+          minimumValue={0}
+          maximumValue={0.3}
+          step={0.01}
+          value={fogDensity}
+          onValueChange={handleFogDensityChange}
+          minimumTrackTintColor="#5562ea"
+          maximumTrackTintColor="#2f3440"
+          thumbTintColor="#5562ea"
+        />
+      </View>
+
       {/* Modal de sélection d'image */}
       <Modal
         visible={pickerVisible}
@@ -906,5 +943,25 @@ const styles = StyleSheet.create({
   weatherBtnText: {
     color: 'white',
     fontWeight: '600',
+  },
+  fogContainer: {
+    position: 'absolute',
+    bottom: 60,
+    right: 16,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    borderRadius: 10,
+    padding: 12,
+    width: 200,
+  },
+  fogLabel: {
+    color: 'white',
+    fontWeight: '600',
+    marginBottom: 8,
+    fontSize: 14,
+    textAlign: 'center',
+  },
+  fogSlider: {
+    width: '100%',
+    height: 40,
   },
 });
