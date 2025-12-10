@@ -20,8 +20,9 @@ export const createEnvironmentMaterial = () => {
 
 export const createLUTPostMaterial = () => {
   const lutTexture = new TextureLoader().load(
-    require("../assets/textures/lut_test_night2.png")
+    require("../assets/textures/lut_sunset.png")
   );
+  lutTexture.flipY = false;
   lutTexture.minFilter = THREE.LinearFilter;
   lutTexture.magFilter = THREE.LinearFilter;
   lutTexture.wrapS = THREE.ClampToEdgeWrapping;

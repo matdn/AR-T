@@ -570,7 +570,7 @@ export default function SceneThree() {
       planetPosition: new THREE.Vector3(0, -50, 0),
       envRadius: 100,
       enableLUT: true,
-      lutIntensity: 0,
+      lutIntensity: 1,
     });
     // S'assurer que l'atmosphère est rendue en premier
     if (atmosphereData.envMesh) {
