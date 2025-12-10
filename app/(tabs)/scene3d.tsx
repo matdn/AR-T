@@ -37,6 +37,12 @@ import {
   type AtmosphereRenderData
 } from "../../utils/atmosphereHelpers";
 import { createWeatherSystem } from "@/components/Weather";
+import {
+  initializeButterflySystem,
+  updateButterflyAnimation,
+  disposeButterflySystem,
+  type ButterflyData,
+} from "../../components/Butterflies";
 
 export default function SceneThree() {
   const animationFrameId = useRef<number | null>(null);
@@ -86,7 +92,7 @@ export default function SceneThree() {
   const [weatherMode, setWeatherMode] = useState<'rain' | 'snow' | 'none'>('snow');
 
   //BUTTERFLY
-  const butterfliesRef = useRef<THREE.Sprite[]>([]);
+  const butterflyDataRef = useRef<ButterflyData | null>(null);
 
   // Fog control
   const [fogDensity, setFogDensity] = useState(0.1);
@@ -469,59 +475,12 @@ export default function SceneThree() {
         }
         weatherRef.current = {};
       }
+
+      // Cleanup butterfly system
+      disposeButterflySystem(butterflyDataRef.current);
+      butterflyDataRef.current = null;
     };
   }, [sceneKey]); // Re-run cleanup when scene reloads
-
-  //BUTTERFLY
-
-  const createButterflies = (
-    scene: THREE.Scene,
-    texture: THREE.Texture,
-    count: number = 40
-  ) => {
-    // Un seul material partagé pour tous les papillons
-    const material = new THREE.SpriteMaterial({
-      map: texture,
-      transparent: true,
-      depthWrite: false,
-    });
-
-    const sprites: THREE.Sprite[] = [];
-
-    for (let i = 0; i < count; i++) {
-      const sprite = new THREE.Sprite(material);
-
-      // Taille random
-      const size = 0.05 + Math.random() * 0.15;
-      sprite.scale.set(size, size, 1);
-
-      // Position de départ autour de la caméra/planète
-      sprite.position.set(
-        THREE.MathUtils.randFloatSpread(10), // X entre -10 et 10
-        THREE.MathUtils.randFloat(0.5, 1.0), // Y au-dessus du sol
-        THREE.MathUtils.randFloatSpread(10)  // Z entre -10 et 10
-      );
-
-      // Paramètres d’anim stockés dans userData
-      sprite.userData = {
-        speed: 0.4 + Math.random() * 0.6,     // vitesse de déplacement
-        amplitude: 0.4 + Math.random() * 0.4, // amplitude "flottante"
-        freq: 0.8 + Math.random() * 1.2,      // fréquence oscillation
-        flapSpeed: 6 + Math.random() * 6,     // battement d’ailes
-        offset: Math.random() * Math.PI * 2,  // déphasage
-        // direction initiale (en X/Z)
-        dir: new THREE.Vector2(
-          THREE.MathUtils.randFloatSpread(1),
-          THREE.MathUtils.randFloatSpread(1)
-        ).normalize(),
-      };
-
-      scene.add(sprite);
-      sprites.push(sprite);
-    }
-
-    butterfliesRef.current = sprites;
-  };
 
 
   const onContextCreate = (gl: ExpoWebGLRenderingContext) => {
@@ -689,28 +648,13 @@ export default function SceneThree() {
     cubeRef.current = cube;
 
     //BUTTERFLY
-    // 👇 ICI : chargement texture papillon + création des sprites
+    // 👇 Initialiser le système de papillons
     (async () => {
       try {
-        // Remplace le chemin par le tien
-        // par exemple: const asset = Asset.fromModule(require('../../../assets/butterfly.png'));
-        const asset = Asset.fromModule(require('../../assets/textures/butterfly.png'));
-        await asset.downloadAsync();
-
-        const uri = asset.localUri ?? asset.uri;
-        const texture = await new TextureLoader().loadAsync(uri);
-
-        // Paramètres "safe" pour mobile
-        texture.wrapS = THREE.ClampToEdgeWrapping;
-        texture.wrapT = THREE.ClampToEdgeWrapping;
-        texture.minFilter = THREE.LinearFilter;
-        texture.magFilter = THREE.LinearFilter;
-        texture.generateMipmaps = false;
-        texture.flipY = false;
-
-        createButterflies(scene, texture, 50);
+        const butterflyData = await initializeButterflySystem(scene, 50);
+        butterflyDataRef.current = butterflyData;
       } catch (e) {
-        console.warn('Erreur chargement texture papillon', e);
+        console.warn('Erreur initialisation système papillon:', e);
       }
     })();
 
@@ -803,51 +747,13 @@ export default function SceneThree() {
         }
       });
 
-      //BUTTERFLY
-
-      // 👇 Animation des papillons
-      if (butterfliesRef.current.length > 0 && cameraRef.current) {
-        const cam = cameraRef.current;
-        const radius = 10; // rayon grossier de la "zone de vol"
-        butterfliesRef.current.forEach((b: any) => {
-          const data = b.userData;
-
-          // Mouvement de base dans le plan XZ
-          b.position.x += data.dir.x * data.speed * 0.01;
-          b.position.z += data.dir.y * data.speed * 0.01;
-
-          // Légère oscillation verticale
-          b.position.y +=
-            Math.sin(time * data.freq + data.offset) * 0.01 * data.amplitude;
-
-          // Battement d’ailes en jouant sur la scale Y
-          const flap =
-            0.05 + Math.sin(time * data.flapSpeed + data.offset) * 0.1;
-          b.scale.x = flap;
-
-          // Option: légère rotation Z pour donner un peu de vie
-          b.rotation.z = Math.sin(time * data.freq + data.offset) * 0.4;
-
-          // Si le papillon sort trop loin, on le wrap près de la caméra
-          const dx = b.position.x - cam.position.x;
-          const dz = b.position.z - cam.position.z;
-          const distXZ = Math.sqrt(dx * dx + dz * dz);
-
-          if (distXZ > radius) {
-            // repositionner sur un cercle autour de la caméra
-            const angle = Math.random() * Math.PI * 2;
-            const r = radius * 0.7;
-            b.position.x = cam.position.x + Math.cos(angle) * r;
-            b.position.z = cam.position.z + Math.sin(angle) * r;
-            b.position.y = THREE.MathUtils.randFloat(0.5, 1.0);
-
-            // nouvelle direction de vol
-            data.dir.set(
-              THREE.MathUtils.randFloatSpread(1),
-              THREE.MathUtils.randFloatSpread(1)
-            ).normalize();
-          }
-        });
+      // BUTTERFLY: Animation des papillons
+      if (butterflyDataRef.current) {
+        updateButterflyAnimation(
+          butterflyDataRef.current.sprites,
+          cameraRef.current,
+          time
+        );
       }
 
       // Render with atmosphere post-processing
