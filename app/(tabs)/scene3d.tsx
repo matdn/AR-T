@@ -11,6 +11,7 @@ import * as ScreenOrientation from 'expo-screen-orientation';
 import Joystick from "../../components/Joystick";
 import ResetButton from "../../components/ResetButton";
 import OrientationToggle from "../../components/OrientationToggle";
+import FogControl, { initializeFog, updateFogDensity } from "../../components/FogControl";
 import { createAtmosphereMeshes } from "../../components/Atmosphere";
 import { useDeviceMotion } from "../../hooks/useDeviceMotion";
 import { useTapDetector } from "../../hooks/useTapDetector";
@@ -30,7 +31,7 @@ import {
   placeRectangleOnSurface
 } from "../../utils/sceneHelpers";
 import { updateGrassTime } from "../../utils/grassShader";
-import { updateGrassWrapping } from "../../utils/grassHelpers";
+import { updateGrassWrapping, updateGrassShaderFog } from "../../utils/grassHelpers";
 import { 
   renderWithAtmosphere, 
   type AtmosphereRenderData 
@@ -83,6 +84,10 @@ export default function SceneThree() {
     snow?: { group: THREE.Group; update: (dt?: number) => void; material: THREE.SpriteMaterial };
   }>({});
   const [weatherMode, setWeatherMode] = useState<'rain' | 'snow' | 'none'>('snow');
+
+  // Fog control
+  const [fogDensity, setFogDensity] = useState(0.1);
+  const fogDensityRef = useRef(0.1);
 
   // Image picker state
   const [pickerVisible, setPickerVisible] = useState(false);
@@ -413,6 +418,14 @@ export default function SceneThree() {
     }
   };
 
+  const handleFogDensityChange = (value: number) => {
+    setFogDensity(value);
+    fogDensityRef.current = value;
+    
+    // Mettre à jour le fog de la scène en temps réel via la fonction du composant
+    updateFogDensity(sceneRef.current, value);
+  };
+
   useEffect(() => {
     ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.LANDSCAPE_LEFT);
   }, []);
@@ -475,6 +488,9 @@ export default function SceneThree() {
     const scene = new THREE.Scene();
     sceneRef.current = scene;
     scene.background = new THREE.Color(0xffffff);
+
+    // Initialiser le fog via le composant FogControl
+    initializeFog(scene, fogDensityRef.current, 0xFFFFFF);
 
     const camera = new THREE.PerspectiveCamera(60, width / height, 0.1, 100);
     cameraRef.current = camera;
@@ -642,8 +658,10 @@ export default function SceneThree() {
       }
 
       // Update grass shader time
-      if (grassMaterialRef.current) {
+      if (grassMaterialRef.current && sceneRef.current) {
         updateGrassTime(grassMaterialRef.current, clockRef.current.getElapsedTime());
+        // Synchroniser le fog du shader avec la scène
+        updateGrassShaderFog(grassMaterialRef.current, sceneRef.current);
       }
 
       // Update weather (sans deltaTime comme dans grass.tsx)
@@ -793,6 +811,15 @@ export default function SceneThree() {
           <Text style={styles.weatherBtnText}>Aucun</Text>
         </TouchableOpacity>
       </View>
+
+      {/* Fog density control */}
+      <FogControl
+        fogDensity={fogDensity}
+        onFogDensityChange={handleFogDensityChange}
+        minValue={0}
+        maxValue={0.3}
+        step={0.01}
+      />
 
       {/* Modal de sélection d'image */}
       <Modal

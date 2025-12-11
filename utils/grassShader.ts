@@ -22,9 +22,12 @@ export function createGrassShaderMaterial(options: GrassShaderOptions = {}) {
       uGrassColor: { value: grassColor },
       uWindStrength: { value: windStrength },
       time: { value: 0 },
+      fogColor: { value: new THREE.Color(0xa0d8ff) },
+      fogDensity: { value: 0.02 },
     },
     vertexShader: `
       varying vec2 vUv;
+      varying vec3 vWorldPos;
       uniform float time;
       uniform vec3 uSphereCenter;
       uniform float uSphereRadius;
@@ -42,6 +45,7 @@ export function createGrassShaderMaterial(options: GrassShaderOptions = {}) {
 
         // Position monde AVANT courbure sur la sphère
         vec4 worldPos = modelMatrix * mvPosition;
+        vWorldPos = worldPos.xyz;
 
         // --- VENT ---
         float dispPower = 1.0 - cos(uv.y * 3.14159265 / 2.0);
@@ -71,11 +75,21 @@ export function createGrassShaderMaterial(options: GrassShaderOptions = {}) {
     `,
     fragmentShader: `
       varying vec2 vUv;
+      varying vec3 vWorldPos;
       uniform vec3 uGrassColor;
+      uniform vec3 fogColor;
+      uniform float fogDensity;
 
       void main() {
         float clarity = (vUv.y * 0.5) + 0.5;
-        gl_FragColor = vec4(uGrassColor * clarity, 1.0);
+        vec3 grassFinal = uGrassColor * clarity;
+        
+        // Appliquer le fog exponentiel
+        float dist = length(vWorldPos);
+        float fogFactor = exp(-fogDensity * fogDensity * dist * dist);
+        vec3 finalColor = mix(fogColor, grassFinal, fogFactor);
+        
+        gl_FragColor = vec4(finalColor, 1.0);
       }
     `,
     side: THREE.DoubleSide,

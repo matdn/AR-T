@@ -51,3 +51,24 @@ export function updateGrassWrapping(
     z: currentRotZ,
   };
 }
+
+export function updateGrassShaderFog(
+  grassMaterial: THREE.ShaderMaterial | null,
+  scene: THREE.Scene
+): void {
+  if (!grassMaterial || !scene.fog) return;
+
+  if (scene.fog instanceof THREE.FogExp2) {
+    grassMaterial.uniforms.fogDensity.value = scene.fog.density;
+  } else if (scene.fog instanceof THREE.Fog) {
+    // Pour un fog linéaire, on approxime avec une densité exponentielle
+    // Plus la distance est grande, plus la densité est petite
+    const range = scene.fog.far - scene.fog.near;
+    grassMaterial.uniforms.fogDensity.value = 1.0 / (range * range);
+  }
+
+  if (grassMaterial.uniforms.fogColor) {
+    grassMaterial.uniforms.fogColor.value.copy(scene.fog.color);
+  }
+}
+
