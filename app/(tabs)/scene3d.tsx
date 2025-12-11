@@ -32,11 +32,17 @@ import {
 } from "../../utils/sceneHelpers";
 import { updateGrassTime } from "../../utils/grassShader";
 import { updateGrassWrapping, updateGrassShaderFog } from "../../utils/grassHelpers";
-import { 
-  renderWithAtmosphere, 
-  type AtmosphereRenderData 
+import {
+  renderWithAtmosphere,
+  type AtmosphereRenderData
 } from "../../utils/atmosphereHelpers";
 import { createWeatherSystem } from "@/components/Weather";
+import {
+  initializeButterflySystem,
+  updateButterflyAnimation,
+  disposeButterflySystem,
+  type ButterflyData,
+} from "../../components/Butterflies";
 
 export default function SceneThree() {
   const animationFrameId = useRef<number | null>(null);
@@ -85,6 +91,9 @@ export default function SceneThree() {
   }>({});
   const [weatherMode, setWeatherMode] = useState<'rain' | 'snow' | 'none'>('snow');
 
+  //BUTTERFLY
+  const butterflyDataRef = useRef<ButterflyData | null>(null);
+
   // Fog control
   const [fogDensity, setFogDensity] = useState(0.1);
   const fogDensityRef = useRef(0.1);
@@ -95,14 +104,14 @@ export default function SceneThree() {
 
   const applyTextureToRect = async (rect: THREE.Mesh, uri: string) => {
     try {
-  const asset = Asset.fromURI(uri);
+      const asset = Asset.fromURI(uri);
       // Ensure the asset is loaded
       await asset.downloadAsync();
       // Déterminer la source locale de l'image
       const source = asset.localUri ?? asset.uri ?? uri;
 
       // Redimensionner pour éviter des textures trop grandes (prévenir pertes de contexte GL)
-  const MAX_DIM = 1024; // Taille max pour éviter pertes de contexte GL sur mobile
+      const MAX_DIM = 1024; // Taille max pour éviter pertes de contexte GL sur mobile
       let processedUri = source;
       try {
         const manipulated = await ImageManipulator.manipulateAsync(
@@ -132,22 +141,22 @@ export default function SceneThree() {
           // libérer l'ancienne map si présente
           const prevMap = (ms as any).map as THREE.Texture | undefined;
           if (prevMap && typeof prevMap.dispose === 'function') {
-            try { prevMap.dispose(); } catch {}
+            try { prevMap.dispose(); } catch { }
           }
           (ms as any).map = texture;
           ms.needsUpdate = true;
           // éviter la teinte par la couleur de base
-          try { ms.color?.set?.(0xffffff as any); } catch {}
+          try { ms.color?.set?.(0xffffff as any); } catch { }
         });
       } else {
         const ms = mat as THREE.MeshStandardMaterial;
         const prevMap = (ms as any).map as THREE.Texture | undefined;
         if (prevMap && typeof prevMap.dispose === 'function') {
-          try { prevMap.dispose(); } catch {}
+          try { prevMap.dispose(); } catch { }
         }
         (ms as any).map = texture;
         ms.needsUpdate = true;
-        try { ms.color?.set?.(0xffffff as any); } catch {}
+        try { ms.color?.set?.(0xffffff as any); } catch { }
       }
     } catch (e) {
       console.warn('Échec du chargement de la texture depuis l\'URI:', uri, e);
@@ -177,47 +186,47 @@ export default function SceneThree() {
       console.log('View size indéterminée, annulation du raycast. w/h =', w, h);
       return;
     }
-  mouse.x = (x / w) * 2 - 1;
-  // Ajout d'un biais vertical pour compenser un raycast trop bas
-  mouse.y = (-(y / h) * 2 + 1) + tapYBiasNDC;
+    mouse.x = (x / w) * 2 - 1;
+    // Ajout d'un biais vertical pour compenser un raycast trop bas
+    mouse.y = (-(y / h) * 2 + 1) + tapYBiasNDC;
 
-  // Étendre la portée du raycaster et recalculer depuis la caméra
-  raycasterRef.current.near = 0.01;
-  raycasterRef.current.far = 1000;
-  raycasterRef.current.setFromCamera(mouse, cameraRef.current);
-    
-  console.log('Mouse coords:', mouse.x, mouse.y, 'biasNDC=', tapYBiasNDC, ' (w,h)=', w, h);
-    
-  planetRef.current.updateMatrixWorld(true);
-  planetRef.current.traverse(obj => obj.updateMatrixWorld(true));
+    // Étendre la portée du raycaster et recalculer depuis la caméra
+    raycasterRef.current.near = 0.01;
+    raycasterRef.current.far = 1000;
+    raycasterRef.current.setFromCamera(mouse, cameraRef.current);
 
-  const rectangleIntersects = raycasterRef.current.intersectObjects(wallsRef.current, false);
-  const proxyIntersects = raycasterRef.current.intersectObjects(hitProxiesRef.current, false);
-    
-  console.log('Direct rectangle intersects:', rectangleIntersects.length);
-  console.log('Proxy intersects:', proxyIntersects.length);
-    
-  // Vérifier si on a cliqué sur un rectangle existant
-  // Raycaster tous les enfants de la planète (qui incluent les rectangles)
-  const intersects = raycasterRef.current.intersectObjects(planetRef.current.children, true);
-    
-  console.log('Rectangles intersectés (avec children):', intersects.length);
+    console.log('Mouse coords:', mouse.x, mouse.y, 'biasNDC=', tapYBiasNDC, ' (w,h)=', w, h);
 
-    
+    planetRef.current.updateMatrixWorld(true);
+    planetRef.current.traverse(obj => obj.updateMatrixWorld(true));
+
+    const rectangleIntersects = raycasterRef.current.intersectObjects(wallsRef.current, false);
+    const proxyIntersects = raycasterRef.current.intersectObjects(hitProxiesRef.current, false);
+
+    console.log('Direct rectangle intersects:', rectangleIntersects.length);
+    console.log('Proxy intersects:', proxyIntersects.length);
+
+    // Vérifier si on a cliqué sur un rectangle existant
+    // Raycaster tous les enfants de la planète (qui incluent les rectangles)
+    const intersects = raycasterRef.current.intersectObjects(planetRef.current.children, true);
+
+    console.log('Rectangles intersectés (avec children):', intersects.length);
+
+
     // DEBUG: Trouver le rectangle le plus proche du rayon
     if (wallsRef.current.length > 0) {
       const ray = raycasterRef.current.ray;
-      
+
       let closestDistance = Infinity;
       let closestIndex = -1;
       let closestWorldPos = new THREE.Vector3();
       let closestLocalPos = new THREE.Vector3();
-      
+
       for (let i = 0; i < wallsRef.current.length; i++) {
         const rect = wallsRef.current[i];
         const worldPos = rect.getWorldPosition(new THREE.Vector3());
         const distance = ray.distanceToPoint(worldPos);
-        
+
         if (distance < closestDistance) {
           closestDistance = distance;
           closestIndex = i;
@@ -251,7 +260,7 @@ export default function SceneThree() {
         console.log('================================');
       }
     }
-    
+
     // Désambiguïsation: combiner hits rectangles + proxies et prendre le plus proche
     if (rectangleIntersects.length > 0 || proxyIntersects.length > 0) {
       const rayHits: Array<{ type: 'rect' | 'proxy'; mesh: THREE.Mesh; distance: number }> = [];
@@ -277,30 +286,30 @@ export default function SceneThree() {
         return;
       }
     }
-    
-  if (intersects.length > 0) {
+
+    if (intersects.length > 0) {
       // Filtrer pour ne garder que les rectangles (pas les lignes de grille)
-      const rectangleIntersect = intersects.find(intersect => 
+      const rectangleIntersect = intersects.find(intersect =>
         wallsRef.current.includes(intersect.object as THREE.Mesh)
       );
-      
+
       if (rectangleIntersect) {
         // Clic sur un rectangle existant
         const clickedRect = rectangleIntersect.object as THREE.Mesh;
         console.log('Rectangle cliqué (children):', clickedRect.userData);
-        
+
         // Changer la couleur en rouge
         if (clickedRect.material && 'color' in clickedRect.material) {
           (clickedRect.material as THREE.MeshStandardMaterial).color.setHex(0xff0000);
         }
-        
+
         if (clickedRect.userData.message) {
           alert(clickedRect.userData.message);
         }
         return;
       }
     }
-    
+
     // Fallback avancé: choisir le rectangle dont le centre est le plus proche du rayon
     if (wallsRef.current.length > 0) {
       const ray = raycasterRef.current.ray;
@@ -342,7 +351,7 @@ export default function SceneThree() {
 
     if (result && planetRef.current) {
       const rectangle = createRectangle(result.position, result.normal);
-      
+
       // Ajouter les données pour l'animation et l'interaction
       const rectCount = wallsRef.current.length;
       rectangle.userData = {
@@ -353,9 +362,9 @@ export default function SceneThree() {
         id: rectCount,
         message: `Nouveau rectangle ${rectCount + 1}`
       };
-      
+
       console.log('Nouveau rectangle créé:', rectangle.userData.message);
-      
+
       planetRef.current.add(rectangle);
       wallsRef.current.push(rectangle);
 
@@ -391,7 +400,7 @@ export default function SceneThree() {
 
   const handleOrientationToggle = async () => {
     const newIsLandscape = !isLandscape;
-    
+
     try {
       if (isLandscape) {
         try {
@@ -406,13 +415,13 @@ export default function SceneThree() {
           await ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.LANDSCAPE);
         }
       }
-      
+
       setIsLandscape(newIsLandscape);
-      
+
       setTimeout(() => {
         setSceneKey(prev => prev + 1);
       }, 1300);
-      
+
     } catch (error) {
       console.error('Erreur lors du changement d\'orientation:', error);
     }
@@ -421,7 +430,7 @@ export default function SceneThree() {
   const handleFogDensityChange = (value: number) => {
     setFogDensity(value);
     fogDensityRef.current = value;
-    
+
     // Mettre à jour le fog de la scène en temps réel via la fonction du composant
     updateFogDensity(sceneRef.current, value);
   };
@@ -437,14 +446,14 @@ export default function SceneThree() {
       if (animationFrameId.current !== null) {
         cancelAnimationFrame(animationFrameId.current);
       }
-      
+
       // Cleanup atmosphere resources
       if (atmosphereDataRef.current) {
         atmosphereDataRef.current.renderTarget?.dispose();
         atmosphereDataRef.current.postMaterial?.dispose();
         atmosphereDataRef.current = null;
       }
-      
+
       // Cleanup grass material
       if (grassMaterialRef.current) {
         grassMaterialRef.current.dispose();
@@ -456,18 +465,23 @@ export default function SceneThree() {
       if (scene) {
         if (weatherRef.current.rain) {
           scene.remove(weatherRef.current.rain.group);
-          try { weatherRef.current.rain.material.map?.dispose?.(); } catch {}
-          try { weatherRef.current.rain.material.dispose?.(); } catch {}
+          try { weatherRef.current.rain.material.map?.dispose?.(); } catch { }
+          try { weatherRef.current.rain.material.dispose?.(); } catch { }
         }
         if (weatherRef.current.snow) {
           scene.remove(weatherRef.current.snow.group);
-          try { weatherRef.current.snow.material.map?.dispose?.(); } catch {}
-          try { weatherRef.current.snow.material.dispose?.(); } catch {}
+          try { weatherRef.current.snow.material.map?.dispose?.(); } catch { }
+          try { weatherRef.current.snow.material.dispose?.(); } catch { }
         }
         weatherRef.current = {};
       }
+
+      // Cleanup butterfly system
+      disposeButterflySystem(butterflyDataRef.current);
+      butterflyDataRef.current = null;
     };
   }, [sceneKey]); // Re-run cleanup when scene reloads
+
 
   const onContextCreate = (gl: ExpoWebGLRenderingContext) => {
     // Cleanup previous atmosphere if exists
@@ -476,7 +490,7 @@ export default function SceneThree() {
       atmosphereDataRef.current.postMaterial?.dispose();
       atmosphereDataRef.current = null;
     }
-    
+
     const { drawingBufferWidth: width, drawingBufferHeight: height } = gl;
 
     setScreenDimensions({ width, height });
@@ -556,7 +570,7 @@ export default function SceneThree() {
       planetPosition: new THREE.Vector3(0, -50, 0),
       envRadius: 100,
       enableLUT: true,
-      lutIntensity: 0.6,
+      lutIntensity: 1,
     });
     // S'assurer que l'atmosphère est rendue en premier
     if (atmosphereData.envMesh) {
@@ -633,12 +647,23 @@ export default function SceneThree() {
     cube.position.set(0, 0.5, 0);
     cubeRef.current = cube;
 
+    //BUTTERFLY
+    // 👇 Initialiser le système de papillons
+    (async () => {
+      try {
+        const butterflyData = await initializeButterflySystem(scene, 50);
+        butterflyDataRef.current = butterflyData;
+      } catch (e) {
+        console.warn('Erreur initialisation système papillon:', e);
+      }
+    })();
+
     const renderLoop = () => {
       animationFrameId.current = requestAnimationFrame(renderLoop);
-      
-    
 
-     const { alpha, beta, gamma } = rotationRef.current;
+
+
+      const { alpha, beta, gamma } = rotationRef.current;
       setDeviceQuaternion(deviceQuatRef.current, alpha, beta, gamma, 0, isLandscape);
 
       const targetQuat = new THREE.Quaternion()
@@ -653,8 +678,8 @@ export default function SceneThree() {
 
       // Rotate inner atmosphere slowly
       if (innerAtmosphereRef.current) {
-        innerAtmosphereRef.current.rotation.y += 0.0005; 
-        innerAtmosphereRef.current.rotation.x += 0.0005; 
+        innerAtmosphereRef.current.rotation.y += 0.0005;
+        innerAtmosphereRef.current.rotation.x += 0.0005;
       }
 
       // Update grass shader time
@@ -666,15 +691,15 @@ export default function SceneThree() {
 
       // Update weather (sans deltaTime comme dans grass.tsx)
       if (weatherRef.current.rain?.group.visible) {
-        try { 
-          weatherRef.current.rain.update(); 
+        try {
+          weatherRef.current.rain.update();
         } catch (e) {
           console.error('[Rain update error]', e);
         }
       }
       if (weatherRef.current.snow?.group.visible) {
-        try { 
-          weatherRef.current.snow.update(); 
+        try {
+          weatherRef.current.snow.update();
         } catch (e) {
           console.error('[Snow update error]', e);
         }
@@ -722,10 +747,19 @@ export default function SceneThree() {
         }
       });
 
+      // BUTTERFLY: Animation des papillons
+      if (butterflyDataRef.current) {
+        updateButterflyAnimation(
+          butterflyDataRef.current.sprites,
+          cameraRef.current,
+          time
+        );
+      }
+
       // Render with atmosphere post-processing
       renderWithAtmosphere(renderer, scene, camera, atmosphereDataRef.current, gl);
     };
-    
+
     renderLoop();
   };
 
@@ -758,16 +792,16 @@ export default function SceneThree() {
         }}
         {...tapResponder.panHandlers}
       >
-        <GLView 
+        <GLView
           key={sceneKey}
-          style={{ flex: 1 }} 
+          style={{ flex: 1 }}
           onContextCreate={onContextCreate}
         />
       </View>
 
-      <OrientationToggle 
-        isLandscape={isLandscape} 
-        onToggle={handleOrientationToggle} 
+      <OrientationToggle
+        isLandscape={isLandscape}
+        onToggle={handleOrientationToggle}
       />
 
       <ResetButton onPress={handleResetView} />
