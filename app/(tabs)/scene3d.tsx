@@ -101,6 +101,10 @@ export default function SceneThree() {
   const [pickerVisible, setPickerVisible] = useState(false);
   const [selectedRect, setSelectedRect] = useState<THREE.Mesh | null>(null);
 
+  // Billboarding temps (évite des allocations par frame)
+  const tmpRectWorldPosRef = useRef(new THREE.Vector3());
+  const tmpCamWorldPosRef = useRef(new THREE.Vector3());
+
   const applyTextureToRect = async (rect: THREE.Mesh, uri: string) => {
     try {
       const asset = Asset.fromURI(uri);
@@ -326,7 +330,6 @@ export default function SceneThree() {
         if (!best || dist < best.dist) best = { rect, center, dist };
       }
       if (best) {
-        // Seuil dynamique approximatif basé sur la taille de la bbox
         const size = new THREE.Vector3();
         new THREE.Box3().setFromObject(best.rect).getSize(size);
         const diag = size.length();
@@ -749,6 +752,15 @@ export default function SceneThree() {
           rect.position.copy(rect.userData.basePosition).addScaledVector(normal, offset);
         }
       });
+
+      // Billboarding: orienter les écrans vers la caméra
+      if (cameraRef.current) {
+        const camWorldPos = cameraRef.current.getWorldPosition(tmpCamWorldPosRef.current);
+        wallsRef.current.forEach((rect) => {
+          rect.getWorldPosition(tmpRectWorldPosRef.current);
+          rect.lookAt(camWorldPos);
+        });
+      }
 
       // BUTTERFLY: Animation des papillons
       if (butterflyDataRef.current) {
