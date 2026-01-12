@@ -5,11 +5,14 @@ import ImageViewer from "@/components/ImageViewer";
 import * as ImagePicker from "expo-image-picker";
 import { useState } from "react";
 import { StyleSheet, View } from "react-native";
-
+import { Redirect } from "expo-router";
 
 const PlaceholderImage = require("../../assets/images/background-image.png");
 
 export default function Index() {
+
+  return <Redirect href="/scene3d" />;
+
 
   const [selectedImage, setSelectedImage] = useState<string | undefined>(
     undefined

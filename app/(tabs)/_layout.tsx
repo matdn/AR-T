@@ -5,6 +5,7 @@ export default function TabsLayout() {
   return (
     <Tabs
     screenOptions={{
+      headerShown: false,
       tabBarActiveTintColor: "#ffd33d",
       headerStyle : {
         backgroundColor: "#25292e",
@@ -12,9 +13,10 @@ export default function TabsLayout() {
       headerShadowVisible: false,
       headerTintColor: "#fff",
       tabBarStyle: {
-        backgroundColor: "#25292e",
+        display: "none",
       },
     }}
+    initialRouteName="scene3d"
     > 
       <Tabs.Screen name = "index" options = {{
         headerTitle: "Create Expo APP",
