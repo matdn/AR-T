@@ -65,7 +65,7 @@ const styles = StyleSheet.create({
   container: {
     position: 'absolute',
     bottom: 40,
-    left: 40,
+    right: 40,
     width: 100,
     height: 100,
     shadowColor: 'rgba(56, 55, 94, 0.5)',

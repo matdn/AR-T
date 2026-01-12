@@ -47,6 +47,7 @@ export default function SceneThree() {
   const animationFrameId = useRef<number | null>(null);
   const rotationRef = useDeviceMotion();
   const [isLandscape, setIsLandscape] = useState(true);
+  const [motionControlEnabled, setMotionControlEnabled] = useState(true);
 
   const cameraRef = useRef<THREE.PerspectiveCamera | null>(null);
   const cubeRef = useRef<THREE.Mesh | null>(null);
@@ -88,14 +89,14 @@ export default function SceneThree() {
     rain?: { group: THREE.Group; update: (dt?: number) => void; material: THREE.SpriteMaterial };
     snow?: { group: THREE.Group; update: (dt?: number) => void; material: THREE.SpriteMaterial };
   }>({});
-  const [weatherMode, setWeatherMode] = useState<'rain' | 'snow' | 'none'>('snow');
+  const [weatherMode, setWeatherMode] = useState<'rain' | 'snow' | 'none'>('none');
 
   //BUTTERFLY
   const butterflyDataRef = useRef<ButterflyData | null>(null);
 
   // Fog control
-  const [fogDensity, setFogDensity] = useState(0.1);
-  const fogDensityRef = useRef(0.1);
+  const [fogDensity, setFogDensity] = useState(0.01);
+  const fogDensityRef = useRef(0.01);
 
   // Image picker state
   const [pickerVisible, setPickerVisible] = useState(false);
@@ -136,7 +137,7 @@ export default function SceneThree() {
       texture.magFilter = THREE.LinearFilter;
       texture.generateMipmaps = false;
       texture.flipY = false;
-      
+
       // Appliquer la texture uniquement sur les 2 grandes faces (indices 4 et 5 = front et back)
       const mat = rect.material;
       if (Array.isArray(mat)) {
@@ -445,6 +446,13 @@ export default function SceneThree() {
     ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.LANDSCAPE_RIGHT);
   }, []);
 
+  const motionControlEnabledRef = useRef(true);
+
+  useEffect(() => {
+    motionControlEnabledRef.current = motionControlEnabled;
+  }, [motionControlEnabled]);
+
+
   // Cleanup resources when scene reloads
   useEffect(() => {
     return () => {
@@ -669,15 +677,18 @@ export default function SceneThree() {
 
 
 
-      const { alpha, beta, gamma } = rotationRef.current;
-      setDeviceQuaternion(deviceQuatRef.current, alpha, beta, gamma, 0, isLandscape);
+      if (motionControlEnabledRef.current) {
 
-      const targetQuat = new THREE.Quaternion()
-        .copy(calibrationQuatRef.current)
-        .multiply(deviceQuatRef.current);
+        const { alpha, beta, gamma } = rotationRef.current;
+        setDeviceQuaternion(deviceQuatRef.current, alpha, beta, gamma, 0, isLandscape);
 
-      if (cameraRef.current) {
-        cameraRef.current.quaternion.slerp(targetQuat, 0.2);
+        const targetQuat = new THREE.Quaternion()
+          .copy(calibrationQuatRef.current)
+          .multiply(deviceQuatRef.current);
+
+        if (cameraRef.current) {
+          cameraRef.current.quaternion.slerp(targetQuat, 0.2);
+        }
       }
 
       cube.rotation.y += 0.01;
@@ -825,8 +836,13 @@ export default function SceneThree() {
           },
           {
             id: 'reset',
-            label: 'Recentrer',
+            icon: require('../../assets/images/recentrer.png'),
             onPress: handleResetView,
+          },
+          {
+            id: 'motion',
+            icon: require('../../assets/images/gyro.png'),
+            onPress: () => setMotionControlEnabled(v => !v),
           },
         ]}
       />
@@ -872,13 +888,13 @@ export default function SceneThree() {
       </View>
 
       {/* Fog density control */}
-      <FogControl
+      {/* <FogControl
         fogDensity={fogDensity}
         onFogDensityChange={handleFogDensityChange}
         minValue={0}
         maxValue={0.3}
         step={0.01}
-      />
+      /> */}
 
       {/* Modal de sélection d'image */}
       <Modal
