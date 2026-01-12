@@ -133,11 +133,13 @@ export default function SceneThree() {
       texture.magFilter = THREE.LinearFilter;
       texture.generateMipmaps = false;
       texture.flipY = false;
-      // Appliquer la texture (gère Material ou Material[])
+      
+      // Appliquer la texture uniquement sur les 2 grandes faces (indices 4 et 5 = front et back)
       const mat = rect.material;
       if (Array.isArray(mat)) {
-        mat.forEach(m => {
-          const ms = m as THREE.MeshStandardMaterial;
+        // Appliquer la texture uniquement aux faces front (4) et back (5) - les grandes faces 3x3
+        for (let i = 4; i < Math.min(6, mat.length); i++) {
+          const ms = mat[i] as THREE.MeshStandardMaterial;
           // libérer l'ancienne map si présente
           const prevMap = (ms as any).map as THREE.Texture | undefined;
           if (prevMap && typeof prevMap.dispose === 'function') {
@@ -147,8 +149,10 @@ export default function SceneThree() {
           ms.needsUpdate = true;
           // éviter la teinte par la couleur de base
           try { ms.color?.set?.(0xffffff as any); } catch { }
-        });
+        }
+        // Les autres faces (0-3) gardent leur couleur de bordure blanche (pas de texture)
       } else {
+        // Fallback si ce n'est pas un tableau (ne devrait pas arriver avec les nouveaux rectangles)
         const ms = mat as THREE.MeshStandardMaterial;
         const prevMap = (ms as any).map as THREE.Texture | undefined;
         if (prevMap && typeof prevMap.dispose === 'function') {
@@ -370,7 +374,7 @@ export default function SceneThree() {
 
       // Créer et attacher un proxy pour ce nouveau rectangle
       const proxyGeo = new THREE.SphereGeometry(0.9, 12, 12);
-      const proxyMat = new THREE.MeshBasicMaterial({ color: 0x000000, transparent: true, opacity: 0, depthWrite: false });
+      const proxyMat = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0, depthWrite: false });
       const proxy = new THREE.Mesh(proxyGeo, proxyMat);
       proxy.userData = { target: rectangle };
       proxy.frustumCulled = false;
@@ -551,7 +555,7 @@ export default function SceneThree() {
     rectangles.forEach(rect => {
       planet.add(rect);
       const proxyGeo = new THREE.SphereGeometry(0.9, 12, 12);
-      const proxyMat = new THREE.MeshBasicMaterial({ color: 0x000000, transparent: true, opacity: 0, depthWrite: false });
+      const proxyMat = new THREE.MeshBasicMaterial({ color: 0xff0000, transparent: true, opacity: 0, depthWrite: false });
       const proxy = new THREE.Mesh(proxyGeo, proxyMat);
       proxy.userData = { target: rect };
       proxy.frustumCulled = false;

@@ -65,7 +65,7 @@ export function addGridLinesToPlanet(planet: THREE.Mesh) {
 export function createSkySphere(): THREE.Mesh {
   const geometry = new THREE.SphereGeometry(80, 32, 32);
   const material = new THREE.MeshBasicMaterial({
-    color: 0x000000,
+    color: 0xffffff,
     wireframe: true,
     side: THREE.BackSide,
   });
@@ -76,18 +76,59 @@ export function createSkySphere(): THREE.Mesh {
 }
 
 export function createRectangle( position: THREE.Vector3, normal: THREE.Vector3, heightAboveSurface: number = 2 ): THREE.Mesh {
-  const wallMaterial = new THREE.MeshStandardMaterial({
-    color: 0x000000,
-    roughness: 0.7,
-    metalness: 0.3,
+  // Créer 6 matériaux (un pour chaque face du cube)
+  // Les grandes faces sont right (0) et left (1), donc on leur donne un matériau spécial
+  // Les autres faces (top, bottom, front, back) auront la couleur de base
+  const borderMaterial = new THREE.MeshStandardMaterial({
+    color: 0xffffff, // Blanc pour les bordures aussi
+    roughness: 0.9,
+    metalness: 0.0, // Pas de métal pour éviter les reflets sombres
     side: THREE.DoubleSide,
   });
+
+  const imageMaterial = new THREE.MeshStandardMaterial({
+    color: 0xffffff,
+    roughness: 0.9,
+    metalness: 0.0, // Pas de métal pour éviter les reflets sombres
+    side: THREE.DoubleSide,
+  });
+
+  // BoxGeometry faces order: [right, left, top, bottom, front, back]
+  // Pour un box de dimensions (3, 0.2, 3):
+  // - right/left (0,1): faces sur l'axe X (petites 0.2x3)
+  // - top/bottom (2,3): faces sur l'axe Y (petites 3x0.2)
+  // - front/back (4,5): faces sur l'axe Z (GRANDES 3x3) ✓
+  const materials = [
+    borderMaterial.clone(), // right - petite tranche
+    borderMaterial.clone(), // left - petite tranche
+    borderMaterial.clone(), // top - petite tranche
+    borderMaterial.clone(), // bottom - petite tranche
+    imageMaterial.clone(), // front - GRANDE face 3x3
+    imageMaterial.clone(), // back - GRANDE face 3x3
+  ];
 
   const rectWidth = 3;
   const rectHeight = 0.2;
   const rectDepth = 3;
   const geometry = new THREE.BoxGeometry(rectWidth, rectHeight, rectDepth);
-  const rectangle = new THREE.Mesh(geometry, wallMaterial);
+  
+  // Ajuster les UVs pour créer une bordure sur les grandes faces
+  const uvAttribute = geometry.attributes.uv;
+  const borderSize = 0.15; // 15% de bordure de chaque côté
+  
+  // BoxGeometry a 24 vertices UV (4 par face x 6 faces)
+  // Front face: indices 16-19, Back face: indices 20-23
+  for (let i = 16; i < 24; i++) {
+    const u = uvAttribute.getX(i);
+    const v = uvAttribute.getY(i);
+    // Mapper de [0,1] vers [borderSize, 1-borderSize]
+    const newU = borderSize + u * (1 - 2 * borderSize);
+    const newV = borderSize + v * (1 - 2 * borderSize);
+    uvAttribute.setXY(i, newU, newV);
+  }
+  uvAttribute.needsUpdate = true;
+
+  const rectangle = new THREE.Mesh(geometry, materials);
 
   rectangle.position.set(
     position.x + normal.x * heightAboveSurface,
@@ -248,7 +289,7 @@ export function createInnerAtmosphere(): THREE.Group {
   const gridGroup = new THREE.Group();
   
   const material = new THREE.LineBasicMaterial({
-    color: 0x000000,
+    color: 0xffffff,
     transparent: true,
     opacity: 0.5,
     depthWrite: false,
