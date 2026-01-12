@@ -14,7 +14,7 @@ export function setDeviceQuaternion(
   isLandscape: boolean = true
 ) {
   if (isLandscape) {
-    euler.set(-gamma, -alpha, beta, "YXZ");
+    euler.set(-gamma, alpha, beta, "YXZ");
   } else {
     euler.set(beta, alpha, -gamma, "YXZ");
   }
