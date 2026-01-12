@@ -1,5 +1,6 @@
 import React from 'react';
-import { View, TouchableOpacity, Text, StyleSheet } from 'react-native';
+import { View, TouchableOpacity, StyleSheet } from 'react-native';
+import { Image } from 'react-native';
 
 interface OrientationToggleProps {
   isLandscape: boolean;
@@ -10,12 +11,10 @@ export default function OrientationToggle({ isLandscape, onToggle }: Orientation
   return (
     <View style={styles.container}>
       <TouchableOpacity style={styles.button} onPress={onToggle}>
-        <Text style={styles.icon}>
-          {isLandscape ? '' : '🔄'}
-        </Text>
-        <Text style={styles.text}>
-          {isLandscape ? 'Portrait' : 'Paysage'}
-        </Text>
+        <Image
+          style={{ width: 24, height: 24 }}
+          source={require('../assets/images/home.png')}
+        />
       </TouchableOpacity>
     </View>
   );
@@ -24,17 +23,15 @@ export default function OrientationToggle({ isLandscape, onToggle }: Orientation
 const styles = StyleSheet.create({
   container: {
     position: 'absolute',
-    top: 60,
-    left: 20,
+    top: 25,
+    left: 24,
   },
   button: {
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 20,
-    backgroundColor: 'rgba(0,0,0,0.6)',
+    padding: 12,
+    borderRadius: 100,
+    backgroundColor: 'rgba(9, 0, 255, 0.25)',
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
   },
   icon: {
     fontSize: 18,
