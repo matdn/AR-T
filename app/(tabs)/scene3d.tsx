@@ -9,8 +9,7 @@ import * as THREE from "three";
 import * as ScreenOrientation from 'expo-screen-orientation';
 
 import Joystick from "../../components/Joystick";
-import ResetButton from "../../components/ResetButton";
-import OrientationToggle from "../../components/OrientationToggle";
+import ButtonGroup from "../../components/ButtonGroup";
 import FogControl, { initializeFog, updateFogDensity } from "../../components/FogControl";
 import { createAtmosphereMeshes } from "../../components/Atmosphere";
 import { useDeviceMotion } from "../../hooks/useDeviceMotion";
@@ -799,12 +798,22 @@ export default function SceneThree() {
         />
       </View>
 
-      <OrientationToggle
-        isLandscape={isLandscape}
-        onToggle={handleOrientationToggle}
+      <ButtonGroup
+        position="top-left"
+        gap={12}
+        buttons={[
+          {
+            id: 'orientation',
+            icon: require('../../assets/images/home.png'),
+            onPress: handleOrientationToggle,
+          },
+          {
+            id: 'reset',
+            label: 'Recentrer',
+            onPress: handleResetView,
+          },
+        ]}
       />
-
-      <ResetButton onPress={handleResetView} />
 
       <Joystick
         position={joystickPosition}
