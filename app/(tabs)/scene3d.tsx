@@ -10,6 +10,7 @@ import * as ScreenOrientation from 'expo-screen-orientation';
 
 import Joystick from "../../components/Joystick";
 import ButtonGroup from "../../components/ButtonGroup";
+import ResetButton from "../../components/ResetButton";
 import FogControl, { initializeFog, updateFogDensity } from "../../components/FogControl";
 import { createAtmosphereMeshes } from "../../components/Atmosphere";
 import { useDeviceMotion } from "../../hooks/useDeviceMotion";
@@ -903,8 +904,10 @@ export default function SceneThree() {
         ]}
       />
 
+      {motionControlEnabled && <ResetButton onPress={handleResetView}/>}
+
       <Joystick
-        containerStyle={{ right: 40, bottom: 40 }}
+        containerStyle={{ right: 50, bottom: 50 }}
         position={joystickPosition}
         onMove={handleJoystickMove}
         onRelease={handleJoystickRelease}
@@ -912,7 +915,7 @@ export default function SceneThree() {
 
       {!motionControlEnabled && (
         <Joystick
-          containerStyle={{ left: 40, bottom: 40 }}
+          containerStyle={{ left: 50, bottom: 50 }}
           position={lookJoystickPosition}
           onMove={handleLookJoystickMove}
           onRelease={handleLookJoystickRelease}
