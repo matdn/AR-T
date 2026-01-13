@@ -9,7 +9,13 @@ import * as THREE from "three";
 import * as ScreenOrientation from 'expo-screen-orientation';
 
 import Joystick from "../../components/Joystick";
-import ButtonGroup from "../../components/ButtonGroup";
+import ButtonMenu from "../../components/ButtonMenu";
+import ButtonEdit from "../../components/ButtonEdit";
+import ButtonTime from "../../components/ButtonTime";
+import ButtonWeather from "../../components/ButtonWeather";
+import IconNone from "../../assets/icons/noneclean.svg";
+import IconRain from "../../assets/icons/rainclean.svg";
+import IconSnow from "../../assets/icons/snowclean.svg";
 import ResetButton from "../../components/ResetButton";
 import FogControl, { initializeFog, updateFogDensity } from "../../components/FogControl";
 import { createAtmosphereMeshes } from "../../components/Atmosphere";
@@ -127,6 +133,9 @@ export default function SceneThree() {
   // Image picker state
   const [pickerVisible, setPickerVisible] = useState(false);
   const [selectedRect, setSelectedRect] = useState<THREE.Mesh | null>(null);
+
+  // Edit mode state
+  const [isEditMode, setIsEditMode] = useState(false);
 
   // Billboarding temps (évite des allocations par frame)
   const tmpRectWorldPosRef = useRef(new THREE.Vector3());
@@ -882,29 +891,59 @@ export default function SceneThree() {
         />
       </View>
 
-      <ButtonGroup
-        position="top-left"
-        gap={12}
-        buttons={[
-          {
-            id: 'orientation',
-            icon: require('../../assets/images/home.png'),
-            onPress: handleOrientationToggle,
-          },
-          {
-            id: 'reset',
-            icon: require('../../assets/images/recentrer.png'),
-            onPress: handleResetView,
-          },
-          {
-            id: 'motion',
-            icon: require('../../assets/images/gyro.png'),
-            onPress: () => setMotionControlEnabled(v => !v),
-          },
-        ]}
-      />
+      {!isEditMode && (
+        <ButtonMenu
+          position="top-left"
+          gap={12}
+          buttons={[
+            {
+              id: 'orientation',
+              icon: require('../../assets/images/home.png'),
+              onPress: handleOrientationToggle,
+            },
+            {
+              id: 'reset',
+              icon: require('../../assets/images/recentrer.png'),
+              onPress: handleResetView,
+            },
+            {
+              id: 'motion',
+              icon: require('../../assets/images/gyro.png'),
+              onPress: () => setMotionControlEnabled(v => !v),
+            },
+          ]}
+        />
+      )}
 
-      {motionControlEnabled && <ResetButton onPress={handleResetView}/>}
+      {!isEditMode && (
+        <ButtonEdit
+          position="top-right"
+          gap={12}
+          buttons={[
+            {
+              id: 'edit',
+              icon: require('../../assets/images/edit.png'),
+              onPress: () => setIsEditMode(v => !v),
+            },
+          ]}
+        />
+      )}
+
+      {isEditMode && (
+        <ButtonEdit
+          position="top-right"
+          gap={12}
+          buttons={[
+            {
+              id: 'edit',
+              icon: require('../../assets/images/no_edit.png'),
+              onPress: () => setIsEditMode(v => !v),
+            },
+          ]}
+        />
+      )}
+
+      {motionControlEnabled && <ResetButton onPress={handleResetView} />}
 
       <Joystick
         containerStyle={{ right: 50, bottom: 50 }}
@@ -915,7 +954,7 @@ export default function SceneThree() {
 
       {!motionControlEnabled && (
         <Joystick
-          containerStyle={{ left: 50, bottom: 50 }}
+          containerStyle={{ left: 75, bottom: 50 }}
           position={lookJoystickPosition}
           onMove={handleLookJoystickMove}
           onRelease={handleLookJoystickRelease}
@@ -924,47 +963,97 @@ export default function SceneThree() {
 
 
       {/* Weather toggle */}
-      <View style={styles.weatherContainer}>
-        <TouchableOpacity
-          style={[styles.weatherBtn, weatherMode === 'rain' && styles.weatherBtnActive]}
-          onPress={() => {
-            setWeatherMode('rain');
-            if (weatherRef.current.rain) weatherRef.current.rain.group.visible = true;
-            if (weatherRef.current.snow) weatherRef.current.snow.group.visible = false;
-          }}
-        >
-          <Text style={styles.weatherBtnText}>Pluie</Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={[styles.weatherBtn, weatherMode === 'snow' && styles.weatherBtnActive]}
-          onPress={() => {
-            setWeatherMode('snow');
-            if (weatherRef.current.rain) weatherRef.current.rain.group.visible = false;
-            if (weatherRef.current.snow) weatherRef.current.snow.group.visible = true;
-          }}
-        >
-          <Text style={styles.weatherBtnText}>Neige</Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={[styles.weatherBtn, weatherMode === 'none' && styles.weatherBtnActive]}
-          onPress={() => {
-            setWeatherMode('none');
-            if (weatherRef.current.rain) weatherRef.current.rain.group.visible = false;
-            if (weatherRef.current.snow) weatherRef.current.snow.group.visible = false;
-          }}
-        >
-          <Text style={styles.weatherBtnText}>Aucun</Text>
-        </TouchableOpacity>
-      </View>
+      {isEditMode && (
+        <View style={styles.editParamsContainer}>
+          <ButtonTime
+            // position="top-left"
+            gap={8}
+            buttons={[
+              {
+                id: 'morning',
+                icon: require('../../assets/images/morning_off.png'),
+                onPress: () => {
+                  setWeatherMode('none');
+                  if (weatherRef.current.rain) weatherRef.current.rain.group.visible = false;
+                  if (weatherRef.current.snow) weatherRef.current.snow.group.visible = false;
+                },
+              },
+              {
+                id: 'breakfaste',
+                icon: require('../../assets/images/breakfaste_off.png'),
+                onPress: () => {
+                  setWeatherMode('none');
+                  if (weatherRef.current.rain) weatherRef.current.rain.group.visible = true;
+                  if (weatherRef.current.snow) weatherRef.current.snow.group.visible = false;
+                },
+              },
+              {
+                id: 'evening',
+                icon: require('../../assets/images/evening_off.png'),
+                onPress: () => {
+                  setWeatherMode('none');
+                  if (weatherRef.current.rain) weatherRef.current.rain.group.visible = false;
+                  if (weatherRef.current.snow) weatherRef.current.snow.group.visible = true;
+                },
+              },
+              {
+                id: 'night',
+                icon: require('../../assets/images/night_off.png'),
+                onPress: () => {
+                  setWeatherMode('none');
+                  if (weatherRef.current.rain) weatherRef.current.rain.group.visible = false;
+                  if (weatherRef.current.snow) weatherRef.current.snow.group.visible = true;
+                },
+              },
+            ]}
+          />
+          <ButtonWeather
+            // position="top-left"
+            gap={8}
+            activeId={weatherMode}
+            buttons={[
+              {
+                id: 'none',
+                Icon: IconNone,
+                onPress: () => {
+                  setWeatherMode('none');
+                  if (weatherRef.current.rain) weatherRef.current.rain.group.visible = false;
+                  if (weatherRef.current.snow) weatherRef.current.snow.group.visible = false;
+                },
+              },
+              {
+                id: 'rain',
+                Icon: IconRain,
+                onPress: () => {
+                  setWeatherMode('rain');
+                  if (weatherRef.current.rain) weatherRef.current.rain.group.visible = true;
+                  if (weatherRef.current.snow) weatherRef.current.snow.group.visible = false;
+                },
+              },
+              {
+                id: 'snow',
+                Icon: IconSnow,
+                onPress: () => {
+                  setWeatherMode('snow');
+                  if (weatherRef.current.rain) weatherRef.current.rain.group.visible = false;
+                  if (weatherRef.current.snow) weatherRef.current.snow.group.visible = true;
+                },
+              },
+            ]}
+          />
 
-      {/* Fog density control */}
-      {/* <FogControl
-        fogDensity={fogDensity}
-        onFogDensityChange={handleFogDensityChange}
-        minValue={0}
-        maxValue={0.3}
-        step={0.01}
-      /> */}
+          {/* Fog density control */}
+          <FogControl
+            fogDensity={fogDensity}
+            onFogDensityChange={handleFogDensityChange}
+            minValue={0}
+            maxValue={0.3}
+            step={0.01}
+          />
+        </View>
+      )}
+
+
 
       {/* Modal de sélection d'image */}
       <Modal
@@ -1055,28 +1144,12 @@ const styles = StyleSheet.create({
     color: 'white',
     fontWeight: '600',
   },
-  weatherContainer: {
+  editParamsContainer: {
     position: 'absolute',
-    top: 60,
-    right: 16,
-    backgroundColor: 'rgba(0,0,0,0.5)',
-    borderRadius: 10,
-    padding: 8,
+    top: 25,
+    left: 25,
+    display: 'flex',
     flexDirection: 'row',
-    gap: 8,
-  },
-  weatherBtn: {
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 8,
-    backgroundColor: '#2f3440',
-    marginHorizontal: 4,
-  },
-  weatherBtnActive: {
-    backgroundColor: '#5562ea',
-  },
-  weatherBtnText: {
-    color: 'white',
-    fontWeight: '600',
-  },
+    gap: 24,
+  }
 });
