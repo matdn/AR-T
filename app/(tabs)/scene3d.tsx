@@ -68,6 +68,7 @@ export default function SceneThree() {
 
   const velocityRef = useRef<{ x: number; z: number }>({ x: 0, z: 0 });
   const [joystickPosition, setJoystickPosition] = useState({ x: 0, y: 0 });
+  const [lookJoystickPosition, setLookJoystickPosition] = useState({ x: 0, y: 0 });
 
   // Grass refs
   const grassGroupRef = useRef<THREE.Group | null>(null);
@@ -83,6 +84,30 @@ export default function SceneThree() {
 
   const atmosphereDataRef = useRef<AtmosphereRenderData | null>(null);
   const innerAtmosphereRef = useRef<THREE.Group | null>(null);
+
+  // joystick look (quand gyro OFF)
+  const lookInputRef = useRef({ x: 0, y: 0 }); // x=yaw, y=pitch ([-1..1] ou un range similaire)
+  const manualLookQuatRef = useRef(new THREE.Quaternion());
+
+  // limites pitch
+  const pitchRef = useRef(0); // radians
+  const yawRef = useRef(0);   // radians
+
+  const handleLookJoystickMove = (v: { x: number; z: number }) => {
+    lookInputRef.current = { x: v.x, y: v.z };
+
+    const maxDistance = 40;
+    setLookJoystickPosition({
+      x: -v.x * maxDistance, // même logique que ton autre joystick
+      y: v.z * maxDistance,
+    });
+  };
+
+  const handleLookJoystickRelease = () => {
+    lookInputRef.current = { x: 0, y: 0 };
+    setLookJoystickPosition({ x: 0, y: 0 });
+  };
+
 
   // Weather systems (rain/snow)
   const weatherRef = useRef<{
@@ -677,19 +702,50 @@ export default function SceneThree() {
 
 
 
-      if (motionControlEnabledRef.current) {
+      const cam = cameraRef.current;
+      if (cam) {
+        if (motionControlEnabledRef.current) {
+          // --- GYRO ON ---
+          const { alpha, beta, gamma } = rotationRef.current;
+          setDeviceQuaternion(deviceQuatRef.current, alpha, beta, gamma, 0, isLandscape);
 
-        const { alpha, beta, gamma } = rotationRef.current;
-        setDeviceQuaternion(deviceQuatRef.current, alpha, beta, gamma, 0, isLandscape);
+          const targetQuat = new THREE.Quaternion()
+            .copy(calibrationQuatRef.current)
+            .multiply(deviceQuatRef.current);
 
-        const targetQuat = new THREE.Quaternion()
-          .copy(calibrationQuatRef.current)
-          .multiply(deviceQuatRef.current);
+          cam.quaternion.slerp(targetQuat, 0.2);
+        } else {
+          // --- GYRO OFF : joystick look ---
+          // dt simple
+          const dt = clockRef.current.getDelta(); // tu as déjà clockRef
+          const look = lookInputRef.current;
 
-        if (cameraRef.current) {
-          cameraRef.current.quaternion.slerp(targetQuat, 0.2);
+          // vitesses (à ajuster)
+          const yawSpeed = 1.8;   // rad/s
+          const pitchSpeed = 1.2; // rad/s
+
+          yawRef.current += look.x * yawSpeed * dt;
+          pitchRef.current += (-look.y) * pitchSpeed * dt;
+
+          // clamp pitch (évite de retourner la caméra)
+          const maxPitch = Math.PI / 2 - 0.15;
+          pitchRef.current = Math.max(-maxPitch, Math.min(maxPitch, pitchRef.current));
+
+          // construire quaternion yaw puis pitch
+          const qYaw = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), yawRef.current);
+          const qPitch = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), pitchRef.current);
+
+          manualLookQuatRef.current.copy(qYaw).multiply(qPitch);
+
+          // on applique autour de ta base “recentrée”
+          const targetQuat = new THREE.Quaternion()
+            .copy(baseQuatRef.current)
+            .multiply(manualLookQuatRef.current);
+
+          cam.quaternion.slerp(targetQuat, 0.2);
         }
       }
+
 
       cube.rotation.y += 0.01;
 
@@ -848,10 +904,21 @@ export default function SceneThree() {
       />
 
       <Joystick
+        containerStyle={{ right: 40, bottom: 40 }}
         position={joystickPosition}
         onMove={handleJoystickMove}
         onRelease={handleJoystickRelease}
       />
+
+      {!motionControlEnabled && (
+        <Joystick
+          containerStyle={{ left: 40, bottom: 40 }}
+          position={lookJoystickPosition}
+          onMove={handleLookJoystickMove}
+          onRelease={handleLookJoystickRelease}
+        />
+      )}
+
 
       {/* Weather toggle */}
       <View style={styles.weatherContainer}>
