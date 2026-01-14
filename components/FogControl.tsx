@@ -57,7 +57,7 @@ export default function FogControl({
         source={require('../assets/images/fog.png')}
       />
       <Slider
-        style={styles.fogSlider}
+        style={[styles.fogSlider, { transform: [{ scaleY: 1 }] }]}
         minimumValue={minValue}
         maximumValue={maxValue}
         step={step}
@@ -66,6 +66,7 @@ export default function FogControl({
         minimumTrackTintColor="#0900ff"
         maximumTrackTintColor="#ffffff"
         thumbTintColor="#0900ff"
+        //thumbImage={require('../assets/icons/thumb.png')}
       />
     </View>
   );
