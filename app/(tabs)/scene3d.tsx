@@ -13,6 +13,7 @@ import ButtonMenu from "../../components/ButtonMenu";
 import ButtonEdit from "../../components/ButtonEdit";
 import ButtonTime from "../../components/ButtonTime";
 import ButtonWeather from "../../components/ButtonWeather";
+import ButtonFloor from "../../components/ButtonFloor";
 import IconNone from "../../assets/icons/noneclean.svg";
 import IconRain from "../../assets/icons/rainclean.svg";
 import IconSnow from "../../assets/icons/snowclean.svg";
@@ -1063,7 +1064,12 @@ export default function SceneThree() {
             maxValue={0.3}
             step={0.01}
           />
+
         </View>
+      )}
+
+      {isEditMode && (
+      <ButtonFloor onPress={handleResetView} />
       )}
 
 
