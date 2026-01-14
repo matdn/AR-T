@@ -16,9 +16,11 @@ import ButtonWeather from "../../components/ButtonWeather";
 import IconNone from "../../assets/icons/noneclean.svg";
 import IconRain from "../../assets/icons/rainclean.svg";
 import IconSnow from "../../assets/icons/snowclean.svg";
+import IconMorning from "../../assets/icons/morningclean.svg";
+import IconEvening from "../../assets/icons/eveningclean.svg";
+import IconNight from "../../assets/icons/nightclean.svg";
 import ResetButton from "../../components/ResetButton";
 import FogControl, { initializeFog, updateFogDensity } from "../../components/FogControl";
-import { createAtmosphereMeshes } from "../../components/Atmosphere";
 import { useDeviceMotion } from "../../hooks/useDeviceMotion";
 import { useTapDetector } from "../../hooks/useTapDetector";
 import { setDeviceQuaternion } from "../../utils/quaternion";
@@ -42,6 +44,10 @@ import {
   renderWithAtmosphere,
   type AtmosphereRenderData
 } from "../../utils/atmosphereHelpers";
+import {
+  createAtmosphereMeshes,
+  updateAtmosphereLUT,
+} from "@/components/Atmosphere";
 import { createWeatherSystem } from "@/components/Weather";
 import {
   initializeButterflySystem,
@@ -122,6 +128,9 @@ export default function SceneThree() {
     snow?: { group: THREE.Group; update: (dt?: number) => void; material: THREE.SpriteMaterial };
   }>({});
   const [weatherMode, setWeatherMode] = useState<'rain' | 'snow' | 'none'>('none');
+
+  // Time mode for LUT
+  const [timeMode, setTimeMode] = useState<'morning' | 'midday' | 'evening' | 'night'>('evening');
 
   //BUTTERFLY
   const butterflyDataRef = useRef<ButterflyData | null>(null);
@@ -620,6 +629,7 @@ export default function SceneThree() {
       envRadius: 100,
       enableLUT: true,
       lutIntensity: 1,
+      timeMode: timeMode,
     });
     // S'assurer que l'atmosphère est rendue en premier
     if (atmosphereData.envMesh) {
@@ -966,49 +976,52 @@ export default function SceneThree() {
       {isEditMode && (
         <View style={styles.editParamsContainer}>
           <ButtonTime
-            // position="top-left"
             gap={8}
+            activeId={timeMode}
             buttons={[
               {
                 id: 'morning',
-                icon: require('../../assets/images/morning_off.png'),
+                Icon: IconMorning,
                 onPress: () => {
-                  setWeatherMode('none');
-                  if (weatherRef.current.rain) weatherRef.current.rain.group.visible = false;
-                  if (weatherRef.current.snow) weatherRef.current.snow.group.visible = false;
+                  setTimeMode('morning');
+                  if (atmosphereDataRef.current?.postMaterial) {
+                    updateAtmosphereLUT(atmosphereDataRef.current.postMaterial, 'morning');
+                  }
                 },
               },
               {
-                id: 'breakfaste',
-                icon: require('../../assets/images/breakfaste_off.png'),
+                id: 'midday',
+                Icon: IconNone,
                 onPress: () => {
-                  setWeatherMode('none');
-                  if (weatherRef.current.rain) weatherRef.current.rain.group.visible = true;
-                  if (weatherRef.current.snow) weatherRef.current.snow.group.visible = false;
+                  setTimeMode('midday');
+                  if (atmosphereDataRef.current?.postMaterial) {
+                    updateAtmosphereLUT(atmosphereDataRef.current.postMaterial, 'midday');
+                  }
                 },
               },
               {
                 id: 'evening',
-                icon: require('../../assets/images/evening_off.png'),
+                Icon: IconEvening,
                 onPress: () => {
-                  setWeatherMode('none');
-                  if (weatherRef.current.rain) weatherRef.current.rain.group.visible = false;
-                  if (weatherRef.current.snow) weatherRef.current.snow.group.visible = true;
+                  setTimeMode('evening');
+                  if (atmosphereDataRef.current?.postMaterial) {
+                    updateAtmosphereLUT(atmosphereDataRef.current.postMaterial, 'evening');
+                  }
                 },
               },
               {
                 id: 'night',
-                icon: require('../../assets/images/night_off.png'),
+                Icon: IconNight,
                 onPress: () => {
-                  setWeatherMode('none');
-                  if (weatherRef.current.rain) weatherRef.current.rain.group.visible = false;
-                  if (weatherRef.current.snow) weatherRef.current.snow.group.visible = true;
+                  setTimeMode('night');
+                  if (atmosphereDataRef.current?.postMaterial) {
+                    updateAtmosphereLUT(atmosphereDataRef.current.postMaterial, 'night');
+                  }
                 },
               },
             ]}
           />
           <ButtonWeather
-            // position="top-left"
             gap={8}
             activeId={weatherMode}
             buttons={[

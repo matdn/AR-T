@@ -1,77 +1,61 @@
 import React from 'react';
-import { View, TouchableOpacity, StyleSheet, Image, Text, useWindowDimensions, ViewStyle } from 'react-native';
+import { View, TouchableOpacity, StyleSheet, Text, useWindowDimensions, ViewStyle } from 'react-native';
+import type { SvgProps } from 'react-native-svg';
 
 interface ButtonItem {
   id: string;
-  icon?: any;
+  Icon?: React.ComponentType<SvgProps>;
   label?: string;
   onPress: () => void;
 }
 
 interface ButtonTimeProps {
   buttons: ButtonItem[];
-  // position?: 'top-left' | 'top-right' | 'bottom-left' | 'bottom-right';
+  activeId: string;
   gap?: number;
   containerStyle?: ViewStyle;
 }
 
-export default function ButtonTime({ 
-  buttons, 
-  // position = 'top-left',
+export default function ButtonTime({
+  buttons,
+  activeId,
   gap = 8,
   containerStyle
 }: ButtonTimeProps) {
   const { width, height } = useWindowDimensions();
   const isLandscape = width > height;
 
-  // const getPositionStyle = () => {
-  //   const basePosition = {
-  //     position: 'absolute' as const,
-  //   };
-
-  //   switch (position) {
-  //     case 'top-left':
-  //       return { ...basePosition, top: 25, left: 24 };
-  //     case 'top-right':
-  //       return { ...basePosition, top: 25, right: 24 };
-  //     case 'bottom-left':
-  //       return { ...basePosition, bottom: 40, left: 24 };
-  //     case 'bottom-right':
-  //       return { ...basePosition, bottom: 40, right: 24 };
-  //     default:
-  //       return { ...basePosition, top: 25, left: 24 };
-  //   }
-  // };
+  const ACTIVE = '#0900FF';
+  const INACTIVE = '#f0dbdb50';
 
   return (
-    <View 
+    <View
       style={[
         styles.groupContainer,
-        // getPositionStyle(),
-        {
-          gap: gap,
-          flexDirection: isLandscape ? 'row' : 'column',
-        },
+        { gap, flexDirection: isLandscape ? 'row' : 'column' },
         containerStyle
       ]}
     >
-      {buttons.map((button) => (
-        <TouchableOpacity 
-          key={button.id}
-          style={styles.button} 
-          onPress={button.onPress}
-          activeOpacity={0.7}
-        >
-          {button.icon ? (
-            <Image
-              style={{ width: 19, height: 19 }}
-              source={button.icon}
-            />
-          ) : (
-            <Text style={styles.buttonText}>{button.label}</Text>
-          )}
-        </TouchableOpacity>
-      ))}
+      {buttons.map((button) => {
+        const isActive = button.id === activeId;
+        const color = isActive ? ACTIVE : INACTIVE;
+        const Icon = button.Icon;
+
+        return (
+          <TouchableOpacity
+            key={button.id}
+            style={[styles.button, isActive ? styles.buttonActive : styles.buttonInactive,]}
+            onPress={button.onPress}
+            activeOpacity={0.7}
+          >
+            {Icon ? (
+              <Icon width={19} height={19} color={color} />
+            ) : (
+              <Text style={styles.buttonText}>{button.label}</Text>
+            )}
+          </TouchableOpacity>
+        );
+      })}
     </View>
   );
 }
@@ -90,6 +74,12 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  buttonActive: {
+    backgroundColor: '#FFFFFF',
+  },
+  buttonInactive: {
+    backgroundColor: 'transparent',
   },
   buttonText: {
     fontSize: 12,
