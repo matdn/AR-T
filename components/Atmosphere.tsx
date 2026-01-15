@@ -3,7 +3,7 @@ import * as THREE from "three";
 
 export const createEnvironmentMaterial = () => {
   const envTexture = new TextureLoader().load(
-    require("../assets/textures/puresky.png")
+    require("../assets/textures/sky_40_2k.png")
   );
 
   envTexture.flipY = false;
@@ -18,15 +18,26 @@ export const createEnvironmentMaterial = () => {
   });
 };
 
-export const createLUTPostMaterial = () => {
-  const lutTexture = new TextureLoader().load(
-    require("../assets/textures/lut_sunset.png")
-  );
+export const getLUTTextureByMode = (mode: 'morning' | 'midday' | 'evening' | 'night' = 'evening'): THREE.Texture => {
+  const lutPaths: Record<string, any> = {
+    morning: require("../assets/textures/lut_morning.png"),
+    midday: require("../assets/textures/lut_midday.png"), // Utilise lut_morning_2 pour le midi
+    evening: require("../assets/textures/lut_sunset.png"),
+    night: require("../assets/textures/lut_night.png"),
+  };
+
+  const lutTexture = new TextureLoader().load(lutPaths[mode] || lutPaths.evening);
   lutTexture.flipY = false;
   lutTexture.minFilter = THREE.LinearFilter;
   lutTexture.magFilter = THREE.LinearFilter;
   lutTexture.wrapS = THREE.ClampToEdgeWrapping;
   lutTexture.wrapT = THREE.ClampToEdgeWrapping;
+
+  return lutTexture;
+};
+
+export const createLUTPostMaterial = (timeMode: 'morning' | 'midday' | 'evening' | 'night' = 'evening') => {
+  const lutTexture = getLUTTextureByMode(timeMode);
 
   const lutSize = 64.0;
   const lutTiles = 8.0;
@@ -101,6 +112,7 @@ export interface AtmosphereOptions {
   envRadius?: number;
   enableLUT?: boolean;
   lutIntensity?: number;
+  timeMode?: 'morning' | 'midday' | 'evening' | 'night';
 }
 
 export const createAtmosphereMeshes = (
@@ -114,6 +126,7 @@ export const createAtmosphereMeshes = (
     envRadius = 200,
     enableLUT = true,
     lutIntensity = 0.6,
+    timeMode = 'evening',
   } = options;
 
   const renderTarget = new THREE.WebGLRenderTarget(width, height, {
@@ -124,7 +137,7 @@ export const createAtmosphereMeshes = (
   const postScene = new THREE.Scene();
   const postCamera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
 
-  const postMaterial = createLUTPostMaterial();
+  const postMaterial = createLUTPostMaterial(timeMode);
   postMaterial.uniforms.uIntensity.value = lutIntensity;
   
   const postQuad = new THREE.Mesh(
@@ -147,4 +160,24 @@ export const createAtmosphereMeshes = (
     envMesh,
     enableLUT,
   };
+};
+
+export const updateAtmosphereLUT = (
+  postMaterial: THREE.ShaderMaterial,
+  timeMode: 'morning' | 'midday' | 'evening' | 'night'
+) => {
+  // Disposer l'ancienne texture
+  const oldLUT = postMaterial.uniforms.tLUT?.value as THREE.Texture | undefined;
+  if (oldLUT && typeof oldLUT.dispose === 'function') {
+    try {
+      oldLUT.dispose();
+    } catch (e) {
+      console.warn('Erreur lors de la suppression de l\'ancienne LUT:', e);
+    }
+  }
+
+  // Charger et appliquer la nouvelle texture
+  const newLUT = getLUTTextureByMode(timeMode);
+  postMaterial.uniforms.tLUT.value = newLUT;
+  postMaterial.needsUpdate = true;
 };

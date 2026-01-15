@@ -1,13 +1,14 @@
 import React from 'react';
-import { View, StyleSheet, PanResponder } from 'react-native';
+import { View, StyleSheet, PanResponder, type ViewStyle, type StyleProp } from 'react-native';
 
 interface JoystickProps {
   position: { x: number; y: number };
   onMove: (velocity: { x: number; z: number }) => void;
   onRelease: () => void;
+  containerStyle?: StyleProp<ViewStyle>;
 }
 
-export default function Joystick({ position, onMove, onRelease }: JoystickProps) {
+export default function Joystick({ position, onMove, onRelease, containerStyle }: JoystickProps) {
   const panResponder = React.useRef(
     PanResponder.create({
       onStartShouldSetPanResponder: () => true,
@@ -43,7 +44,7 @@ export default function Joystick({ position, onMove, onRelease }: JoystickProps)
   ).current;
 
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, containerStyle]}>
       <View style={styles.base} {...panResponder.panHandlers}>
         <View 
           style={[
@@ -64,8 +65,6 @@ export default function Joystick({ position, onMove, onRelease }: JoystickProps)
 const styles = StyleSheet.create({
   container: {
     position: 'absolute',
-    bottom: 40,
-    left: 40,
     width: 100,
     height: 100,
     shadowColor: 'rgba(56, 55, 94, 0.5)',

@@ -8,19 +8,19 @@ interface ButtonItem {
   onPress: () => void;
 }
 
-interface ButtonGroupProps {
+interface ButtonEditProps {
   buttons: ButtonItem[];
   position?: 'top-left' | 'top-right' | 'bottom-left' | 'bottom-right';
   gap?: number;
   containerStyle?: ViewStyle;
 }
 
-export default function ButtonGroup({ 
+export default function ButtonEdit({ 
   buttons, 
   position = 'top-left',
   gap = 12,
   containerStyle
-}: ButtonGroupProps) {
+}: ButtonEditProps) {
   const { width, height } = useWindowDimensions();
   const isLandscape = width > height;
 
@@ -64,7 +64,7 @@ export default function ButtonGroup({
         >
           {button.icon ? (
             <Image
-              style={{ width: 24, height: 24 }}
+              style={{ width: 35, height: 35 }}
               source={button.icon}
             />
           ) : (
@@ -81,9 +81,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   button: {
-    padding: 12,
+    padding: 5,
     borderRadius: 100,
-    backgroundColor: 'rgba(9, 0, 255, 0.25)',
+    backgroundColor: 'rgba(244, 244, 244, 0.50)',
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',

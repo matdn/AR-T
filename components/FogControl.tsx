@@ -1,5 +1,5 @@
 import React from 'react';
-import { StyleSheet, View, Text } from 'react-native';
+import { StyleSheet, View, Image, Text } from 'react-native';
 import Slider from '@react-native-community/slider';
 import * as THREE from 'three';
 
@@ -51,17 +51,22 @@ export default function FogControl({
 }: FogControlProps) {
   return (
     <View style={styles.fogContainer}>
-      <Text style={styles.fogLabel}>Fog: {fogDensity.toFixed(2)}</Text>
+      {/* <Text style={styles.fogLabel}>Fog: {fogDensity.toFixed(2)}</Text> */}
+      <Image
+        style={{ width: 19, height: 20 }}
+        source={require('../assets/images/fog.png')}
+      />
       <Slider
-        style={styles.fogSlider}
+        style={[styles.fogSlider, { transform: [{ scaleY: 1 }] }]}
         minimumValue={minValue}
         maximumValue={maxValue}
         step={step}
         value={fogDensity}
         onValueChange={onFogDensityChange}
-        minimumTrackTintColor="#5562ea"
-        maximumTrackTintColor="#2f3440"
-        thumbTintColor="#5562ea"
+        minimumTrackTintColor="#0900ff"
+        maximumTrackTintColor="#ffffff"
+        thumbTintColor="#0900ff"
+        //thumbImage={require('../assets/icons/thumb.png')}
       />
     </View>
   );
@@ -69,13 +74,15 @@ export default function FogControl({
 
 const styles = StyleSheet.create({
   fogContainer: {
-    position: 'absolute',
-    bottom: 60,
-    right: 16,
-    backgroundColor: 'rgba(0,0,0,0.5)',
-    borderRadius: 10,
+    display: 'flex',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: 'rgba(244, 244, 244, 0.50)',
+    borderRadius: 100,
     padding: 12,
-    width: 200,
+    width: 177,
+    height: 35,
   },
   fogLabel: {
     color: 'white',
@@ -85,7 +92,7 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
   fogSlider: {
-    width: '100%',
-    height: 40,
+    width: 120,
+    height: '100%',
   },
 });

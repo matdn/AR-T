@@ -9,9 +9,19 @@ import * as THREE from "three";
 import * as ScreenOrientation from 'expo-screen-orientation';
 
 import Joystick from "../../components/Joystick";
-import ButtonGroup from "../../components/ButtonGroup";
+import ButtonMenu from "../../components/ButtonMenu";
+import ButtonEdit from "../../components/ButtonEdit";
+import ButtonTime from "../../components/ButtonTime";
+import ButtonWeather from "../../components/ButtonWeather";
+import ButtonFloor from "../../components/ButtonFloor";
+import IconNone from "../../assets/icons/noneclean.svg";
+import IconRain from "../../assets/icons/rainclean.svg";
+import IconSnow from "../../assets/icons/snowclean.svg";
+import IconMorning from "../../assets/icons/morningclean.svg";
+import IconEvening from "../../assets/icons/eveningclean.svg";
+import IconNight from "../../assets/icons/nightclean.svg";
+import ResetButton from "../../components/ResetButton";
 import FogControl, { initializeFog, updateFogDensity } from "../../components/FogControl";
-import { createAtmosphereMeshes } from "../../components/Atmosphere";
 import { useDeviceMotion } from "../../hooks/useDeviceMotion";
 import { useTapDetector } from "../../hooks/useTapDetector";
 import { setDeviceQuaternion } from "../../utils/quaternion";
@@ -35,6 +45,10 @@ import {
   renderWithAtmosphere,
   type AtmosphereRenderData
 } from "../../utils/atmosphereHelpers";
+import {
+  createAtmosphereMeshes,
+  updateAtmosphereLUT,
+} from "@/components/Atmosphere";
 import { createWeatherSystem } from "@/components/Weather";
 import {
   initializeButterflySystem,
@@ -47,6 +61,7 @@ export default function SceneThree() {
   const animationFrameId = useRef<number | null>(null);
   const rotationRef = useDeviceMotion();
   const [isLandscape, setIsLandscape] = useState(true);
+  const [motionControlEnabled, setMotionControlEnabled] = useState(true);
 
   const cameraRef = useRef<THREE.PerspectiveCamera | null>(null);
   const cubeRef = useRef<THREE.Mesh | null>(null);
@@ -67,6 +82,7 @@ export default function SceneThree() {
 
   const velocityRef = useRef<{ x: number; z: number }>({ x: 0, z: 0 });
   const [joystickPosition, setJoystickPosition] = useState({ x: 0, y: 0 });
+  const [lookJoystickPosition, setLookJoystickPosition] = useState({ x: 0, y: 0 });
 
   // Grass refs
   const grassGroupRef = useRef<THREE.Group | null>(null);
@@ -83,23 +99,53 @@ export default function SceneThree() {
   const atmosphereDataRef = useRef<AtmosphereRenderData | null>(null);
   const innerAtmosphereRef = useRef<THREE.Group | null>(null);
 
+  // joystick look (quand gyro OFF)
+  const lookInputRef = useRef({ x: 0, y: 0 }); // x=yaw, y=pitch ([-1..1] ou un range similaire)
+  const manualLookQuatRef = useRef(new THREE.Quaternion());
+
+  // limites pitch
+  const pitchRef = useRef(0); // radians
+  const yawRef = useRef(0);   // radians
+
+  const handleLookJoystickMove = (v: { x: number; z: number }) => {
+    lookInputRef.current = { x: v.x, y: v.z };
+
+    const maxDistance = 40;
+    setLookJoystickPosition({
+      x: -v.x * maxDistance, // même logique que ton autre joystick
+      y: v.z * maxDistance,
+    });
+  };
+
+  const handleLookJoystickRelease = () => {
+    lookInputRef.current = { x: 0, y: 0 };
+    setLookJoystickPosition({ x: 0, y: 0 });
+  };
+
+
   // Weather systems (rain/snow)
   const weatherRef = useRef<{
     rain?: { group: THREE.Group; update: (dt?: number) => void; material: THREE.SpriteMaterial };
     snow?: { group: THREE.Group; update: (dt?: number) => void; material: THREE.SpriteMaterial };
   }>({});
-  const [weatherMode, setWeatherMode] = useState<'rain' | 'snow' | 'none'>('snow');
+  const [weatherMode, setWeatherMode] = useState<'rain' | 'snow' | 'none'>('none');
+
+  // Time mode for LUT
+  const [timeMode, setTimeMode] = useState<'morning' | 'midday' | 'evening' | 'night'>('evening');
 
   //BUTTERFLY
   const butterflyDataRef = useRef<ButterflyData | null>(null);
 
   // Fog control
-  const [fogDensity, setFogDensity] = useState(0.1);
-  const fogDensityRef = useRef(0.1);
+  const [fogDensity, setFogDensity] = useState(0.01);
+  const fogDensityRef = useRef(0.01);
 
   // Image picker state
   const [pickerVisible, setPickerVisible] = useState(false);
   const [selectedRect, setSelectedRect] = useState<THREE.Mesh | null>(null);
+
+  // Edit mode state
+  const [isEditMode, setIsEditMode] = useState(false);
 
   // Billboarding temps (évite des allocations par frame)
   const tmpRectWorldPosRef = useRef(new THREE.Vector3());
@@ -145,8 +191,8 @@ export default function SceneThree() {
       texture.minFilter = THREE.LinearFilter;
       texture.magFilter = THREE.LinearFilter;
       texture.generateMipmaps = false;
-      texture.flipY = true;
-      
+      texture.flipY = false;
+
       // Appliquer la texture uniquement sur les 2 grandes faces (indices 4 et 5 = front et back)
       const mat = rect.material;
       if (Array.isArray(mat)) {
@@ -450,6 +496,13 @@ export default function SceneThree() {
     ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.LANDSCAPE_RIGHT);
   }, []);
 
+  const motionControlEnabledRef = useRef(true);
+
+  useEffect(() => {
+    motionControlEnabledRef.current = motionControlEnabled;
+  }, [motionControlEnabled]);
+
+
   // Cleanup resources when scene reloads
   useEffect(() => {
     return () => {
@@ -589,6 +642,7 @@ export default function SceneThree() {
       envRadius: 100,
       enableLUT: true,
       lutIntensity: 1,
+      timeMode: timeMode,
     });
     // S'assurer que l'atmosphère est rendue en premier
     if (atmosphereData.envMesh) {
@@ -685,16 +739,50 @@ console.log("RECT0 mask", rectangles[0]?.layers.mask);
 
 
 
-      const { alpha, beta, gamma } = rotationRef.current;
-      setDeviceQuaternion(deviceQuatRef.current, alpha, beta, gamma, 0, isLandscape);
+      const cam = cameraRef.current;
+      if (cam) {
+        if (motionControlEnabledRef.current) {
+          // --- GYRO ON ---
+          const { alpha, beta, gamma } = rotationRef.current;
+          setDeviceQuaternion(deviceQuatRef.current, alpha, beta, gamma, 0, isLandscape);
 
-      const targetQuat = new THREE.Quaternion()
-        .copy(calibrationQuatRef.current)
-        .multiply(deviceQuatRef.current);
+          const targetQuat = new THREE.Quaternion()
+            .copy(calibrationQuatRef.current)
+            .multiply(deviceQuatRef.current);
 
-      if (cameraRef.current) {
-        cameraRef.current.quaternion.slerp(targetQuat, 0.2);
+          cam.quaternion.slerp(targetQuat, 0.2);
+        } else {
+          // --- GYRO OFF : joystick look ---
+          // dt simple
+          const dt = clockRef.current.getDelta(); // tu as déjà clockRef
+          const look = lookInputRef.current;
+
+          // vitesses (à ajuster)
+          const yawSpeed = 1.8;   // rad/s
+          const pitchSpeed = 1.2; // rad/s
+
+          yawRef.current += look.x * yawSpeed * dt;
+          pitchRef.current += (-look.y) * pitchSpeed * dt;
+
+          // clamp pitch (évite de retourner la caméra)
+          const maxPitch = Math.PI / 2 - 0.15;
+          pitchRef.current = Math.max(-maxPitch, Math.min(maxPitch, pitchRef.current));
+
+          // construire quaternion yaw puis pitch
+          const qYaw = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), yawRef.current);
+          const qPitch = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), pitchRef.current);
+
+          manualLookQuatRef.current.copy(qYaw).multiply(qPitch);
+
+          // on applique autour de ta base “recentrée”
+          const targetQuat = new THREE.Quaternion()
+            .copy(baseQuatRef.current)
+            .multiply(manualLookQuatRef.current);
+
+          cam.quaternion.slerp(targetQuat, 0.2);
+        }
       }
+
 
       cube.rotation.y += 0.01;
 
@@ -860,71 +948,177 @@ console.log("RECT0 mask", rectangles[0]?.layers.mask);
         />
       </View>
 
-      <ButtonGroup
-        position="top-left"
-        gap={12}
-        buttons={[
-          {
-            id: 'orientation',
-            icon: require('../../assets/images/home.png'),
-            onPress: handleOrientationToggle,
-          },
-          {
-            id: 'reset',
-            label: 'Recentrer',
-            onPress: handleResetView,
-          },
-        ]}
-      />
+      {!isEditMode && (
+        <ButtonMenu
+          position="top-left"
+          gap={12}
+          buttons={[
+            {
+              id: 'orientation',
+              icon: require('../../assets/images/home.png'),
+              onPress: handleOrientationToggle,
+            },
+            {
+              id: 'reset',
+              icon: require('../../assets/images/recentrer.png'),
+              onPress: handleResetView,
+            },
+            {
+              id: 'motion',
+              icon: require('../../assets/images/gyro.png'),
+              onPress: () => setMotionControlEnabled(v => !v),
+            },
+          ]}
+        />
+      )}
+
+      {!isEditMode && (
+        <ButtonEdit
+          position="top-right"
+          gap={12}
+          buttons={[
+            {
+              id: 'edit',
+              icon: require('../../assets/images/edit.png'),
+              onPress: () => setIsEditMode(v => !v),
+            },
+          ]}
+        />
+      )}
+
+      {isEditMode && (
+        <ButtonEdit
+          position="top-right"
+          gap={12}
+          buttons={[
+            {
+              id: 'edit',
+              icon: require('../../assets/images/no_edit.png'),
+              onPress: () => setIsEditMode(v => !v),
+            },
+          ]}
+        />
+      )}
+
+      {motionControlEnabled && <ResetButton onPress={handleResetView} />}
 
       <Joystick
+        containerStyle={{ right: 50, bottom: 50 }}
         position={joystickPosition}
         onMove={handleJoystickMove}
         onRelease={handleJoystickRelease}
       />
 
-      {/* Weather toggle */}
-      <View style={styles.weatherContainer}>
-        <TouchableOpacity
-          style={[styles.weatherBtn, weatherMode === 'rain' && styles.weatherBtnActive]}
-          onPress={() => {
-            setWeatherMode('rain');
-            if (weatherRef.current.rain) weatherRef.current.rain.group.visible = true;
-            if (weatherRef.current.snow) weatherRef.current.snow.group.visible = false;
-          }}
-        >
-          <Text style={styles.weatherBtnText}>Pluie</Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={[styles.weatherBtn, weatherMode === 'snow' && styles.weatherBtnActive]}
-          onPress={() => {
-            setWeatherMode('snow');
-            if (weatherRef.current.rain) weatherRef.current.rain.group.visible = false;
-            if (weatherRef.current.snow) weatherRef.current.snow.group.visible = true;
-          }}
-        >
-          <Text style={styles.weatherBtnText}>Neige</Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={[styles.weatherBtn, weatherMode === 'none' && styles.weatherBtnActive]}
-          onPress={() => {
-            setWeatherMode('none');
-            if (weatherRef.current.rain) weatherRef.current.rain.group.visible = false;
-            if (weatherRef.current.snow) weatherRef.current.snow.group.visible = false;
-          }}
-        >
-          <Text style={styles.weatherBtnText}>Aucun</Text>
-        </TouchableOpacity>
-      </View>
+      {!motionControlEnabled && (
+        <Joystick
+          containerStyle={{ left: 75, bottom: 50 }}
+          position={lookJoystickPosition}
+          onMove={handleLookJoystickMove}
+          onRelease={handleLookJoystickRelease}
+        />
+      )}
 
-      {/* Fog density control */}
-      <FogControl
-        fogDensity={fogDensity}
-        onFogDensityChange={handleFogDensityChange}
-        minValue={0}
-        maxValue={0.3}
-        step={0.01}
-      />
+
+      {/* Weather toggle */}
+      {isEditMode && (
+        <View style={styles.editParamsContainer}>
+          <ButtonTime
+            gap={8}
+            activeId={timeMode}
+            buttons={[
+              {
+                id: 'morning',
+                Icon: IconMorning,
+                onPress: () => {
+                  setTimeMode('morning');
+                  if (atmosphereDataRef.current?.postMaterial) {
+                    updateAtmosphereLUT(atmosphereDataRef.current.postMaterial, 'morning');
+                  }
+                },
+              },
+              {
+                id: 'midday',
+                Icon: IconNone,
+                onPress: () => {
+                  setTimeMode('midday');
+                  if (atmosphereDataRef.current?.postMaterial) {
+                    updateAtmosphereLUT(atmosphereDataRef.current.postMaterial, 'midday');
+                  }
+                },
+              },
+              {
+                id: 'evening',
+                Icon: IconEvening,
+                onPress: () => {
+                  setTimeMode('evening');
+                  if (atmosphereDataRef.current?.postMaterial) {
+                    updateAtmosphereLUT(atmosphereDataRef.current.postMaterial, 'evening');
+                  }
+                },
+              },
+              {
+                id: 'night',
+                Icon: IconNight,
+                onPress: () => {
+                  setTimeMode('night');
+                  if (atmosphereDataRef.current?.postMaterial) {
+                    updateAtmosphereLUT(atmosphereDataRef.current.postMaterial, 'night');
+                  }
+                },
+              },
+            ]}
+          />
+          <ButtonWeather
+            gap={8}
+            activeId={weatherMode}
+            buttons={[
+              {
+                id: 'none',
+                Icon: IconNone,
+                onPress: () => {
+                  setWeatherMode('none');
+                  if (weatherRef.current.rain) weatherRef.current.rain.group.visible = false;
+                  if (weatherRef.current.snow) weatherRef.current.snow.group.visible = false;
+                },
+              },
+              {
+                id: 'rain',
+                Icon: IconRain,
+                onPress: () => {
+                  setWeatherMode('rain');
+                  if (weatherRef.current.rain) weatherRef.current.rain.group.visible = true;
+                  if (weatherRef.current.snow) weatherRef.current.snow.group.visible = false;
+                },
+              },
+              {
+                id: 'snow',
+                Icon: IconSnow,
+                onPress: () => {
+                  setWeatherMode('snow');
+                  if (weatherRef.current.rain) weatherRef.current.rain.group.visible = false;
+                  if (weatherRef.current.snow) weatherRef.current.snow.group.visible = true;
+                },
+              },
+            ]}
+          />
+
+          {/* Fog density control */}
+          <FogControl
+            fogDensity={fogDensity}
+            onFogDensityChange={handleFogDensityChange}
+            minValue={0}
+            maxValue={0.3}
+            step={0.01}
+          />
+
+        </View>
+      )}
+
+      {isEditMode && (
+      <ButtonFloor onPress={handleResetView} />
+      )}
+
+
 
       {/* Modal de sélection d'image */}
       <Modal
@@ -1015,28 +1209,12 @@ const styles = StyleSheet.create({
     color: 'white',
     fontWeight: '600',
   },
-  weatherContainer: {
+  editParamsContainer: {
     position: 'absolute',
-    top: 60,
-    right: 16,
-    backgroundColor: 'rgba(0,0,0,0.5)',
-    borderRadius: 10,
-    padding: 8,
+    top: 25,
+    left: 25,
+    display: 'flex',
     flexDirection: 'row',
-    gap: 8,
-  },
-  weatherBtn: {
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 8,
-    backgroundColor: '#2f3440',
-    marginHorizontal: 4,
-  },
-  weatherBtnActive: {
-    backgroundColor: '#5562ea',
-  },
-  weatherBtnText: {
-    color: 'white',
-    fontWeight: '600',
-  },
+    gap: 24,
+  }
 });
