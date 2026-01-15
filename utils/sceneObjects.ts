@@ -79,19 +79,20 @@ export function createRectangle( position: THREE.Vector3, normal: THREE.Vector3,
   // Créer 6 matériaux (un pour chaque face du cube)
   // Les grandes faces sont right (0) et left (1), donc on leur donne un matériau spécial
   // Les autres faces (top, bottom, front, back) auront la couleur de base
-  const borderMaterial = new THREE.MeshStandardMaterial({
-    color: 0xffffff, // Blanc pour les bordures aussi
-    roughness: 0.9,
-    metalness: 0.0, // Pas de métal pour éviter les reflets sombres
+  // Matériau non dépendant des lumières (toujours blanc)
+  const borderMaterial = new THREE.MeshBasicMaterial({
+    color: 0xffffff,
     side: THREE.DoubleSide,
   });
 
-  const imageMaterial = new THREE.MeshStandardMaterial({
+  // Matériau non-éclairé aussi pour l'image (la texture sera affichée sans shading)
+  const imageMaterial = new THREE.MeshBasicMaterial({
     color: 0xffffff,
-    roughness: 0.9,
-    metalness: 0.0, // Pas de métal pour éviter les reflets sombres
     side: THREE.DoubleSide,
   });
+  // Ne pas teinter l'image via fog / toneMapping
+  imageMaterial.fog = false;
+  imageMaterial.toneMapped = false;
 
   // BoxGeometry faces order: [right, left, top, bottom, front, back]
   // Pour un box de dimensions (3, 0.2, 3):
@@ -108,8 +109,9 @@ export function createRectangle( position: THREE.Vector3, normal: THREE.Vector3,
   ];
 
   const rectWidth = 3;
-  const rectHeight = 0.2;
-  const rectDepth = 3;
+  // On veut un panneau vertical: largeur=3, hauteur=3, épaisseur=0.2
+  const rectHeight = 3;
+  const rectDepth = 0.2;
   const geometry = new THREE.BoxGeometry(rectWidth, rectHeight, rectDepth);
   
   // Ajuster les UVs pour créer une bordure sur les grandes faces
@@ -124,11 +126,15 @@ export function createRectangle( position: THREE.Vector3, normal: THREE.Vector3,
     // Mapper de [0,1] vers [borderSize, 1-borderSize]
     const newU = borderSize + u * (1 - 2 * borderSize);
     const newV = borderSize + v * (1 - 2 * borderSize);
-    uvAttribute.setXY(i, newU, newV);
+    // Flip horizontal (axe X / U) : u' = 1 - u
+    uvAttribute.setXY(i, 1 - newU, newV);
   }
   uvAttribute.needsUpdate = true;
 
   const rectangle = new THREE.Mesh(geometry, materials);
+
+  // Layer 1 = écrans/murs (rendu sans LUT)
+  rectangle.layers.set(1);
 
   rectangle.position.set(
     position.x + normal.x * heightAboveSurface,
@@ -172,7 +178,8 @@ export function createRandomRectangles(count: number = 20): THREE.Mesh[] {
     const normal = position.clone().normalize();
     
     const rectangle = createRectangle(position, normal);
-    
+    rectangle.layers.set(1);
+
     // Stocker les infos pour l'animation et l'interaction
     rectangle.userData = {
       basePosition: position.clone(),

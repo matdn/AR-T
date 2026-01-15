@@ -104,6 +104,16 @@ export default function SceneThree() {
   // Billboarding temps (évite des allocations par frame)
   const tmpRectWorldPosRef = useRef(new THREE.Vector3());
   const tmpCamWorldPosRef = useRef(new THREE.Vector3());
+  const tmpBillboardTargetRef = useRef(new THREE.Vector3());
+  const tmpPlanetWorldPosRef = useRef(new THREE.Vector3());
+  const tmpUpNormalRef = useRef(new THREE.Vector3());
+  const tmpToCamRef = useRef(new THREE.Vector3());
+  const tmpForwardRef = useRef(new THREE.Vector3());
+  const tmpRightRef = useRef(new THREE.Vector3());
+  const tmpBasisMatrixRef = useRef(new THREE.Matrix4());
+  const tmpWorldQuatRef = useRef(new THREE.Quaternion());
+  const tmpParentWorldQuatRef = useRef(new THREE.Quaternion());
+  const tmpInvParentWorldQuatRef = useRef(new THREE.Quaternion());
 
   const applyTextureToRect = async (rect: THREE.Mesh, uri: string) => {
     try {
@@ -135,35 +145,43 @@ export default function SceneThree() {
       texture.minFilter = THREE.LinearFilter;
       texture.magFilter = THREE.LinearFilter;
       texture.generateMipmaps = false;
-      texture.flipY = false;
+      texture.flipY = true;
       
       // Appliquer la texture uniquement sur les 2 grandes faces (indices 4 et 5 = front et back)
       const mat = rect.material;
       if (Array.isArray(mat)) {
         // Appliquer la texture uniquement aux faces front (4) et back (5) - les grandes faces 3x3
         for (let i = 4; i < Math.min(6, mat.length); i++) {
-          const ms = mat[i] as THREE.MeshStandardMaterial;
+          const ms = mat[i] as any;
           // libérer l'ancienne map si présente
           const prevMap = (ms as any).map as THREE.Texture | undefined;
           if (prevMap && typeof prevMap.dispose === 'function') {
             try { prevMap.dispose(); } catch { }
           }
           (ms as any).map = texture;
-          ms.needsUpdate = true;
-          // éviter la teinte par la couleur de base
+          // Ne pas teinter la texture
           try { ms.color?.set?.(0xffffff as any); } catch { }
+          // Ne pas impacter par fog/tonemapping
+          try { ms.fog = false; } catch { }
+          try { ms.toneMapped = false; } catch { }
+          // Ne pas impacter par un envMap (si le matériau le supporte)
+          try { (ms as any).envMapIntensity = 0; } catch { }
+          ms.needsUpdate = true;
         }
         // Les autres faces (0-3) gardent leur couleur de bordure blanche (pas de texture)
       } else {
         // Fallback si ce n'est pas un tableau (ne devrait pas arriver avec les nouveaux rectangles)
-        const ms = mat as THREE.MeshStandardMaterial;
+        const ms = mat as any;
         const prevMap = (ms as any).map as THREE.Texture | undefined;
         if (prevMap && typeof prevMap.dispose === 'function') {
           try { prevMap.dispose(); } catch { }
         }
         (ms as any).map = texture;
-        ms.needsUpdate = true;
         try { ms.color?.set?.(0xffffff as any); } catch { }
+        try { ms.fog = false; } catch { }
+        try { ms.toneMapped = false; } catch { }
+        try { (ms as any).envMapIntensity = 0; } catch { }
+        ms.needsUpdate = true;
       }
     } catch (e) {
       console.warn('Échec du chargement de la texture depuis l\'URI:', uri, e);
@@ -194,10 +212,8 @@ export default function SceneThree() {
       return;
     }
     mouse.x = (x / w) * 2 - 1;
-    // Ajout d'un biais vertical pour compenser un raycast trop bas
     mouse.y = (-(y / h) * 2 + 1) + tapYBiasNDC;
 
-    // Étendre la portée du raycaster et recalculer depuis la caméra
     raycasterRef.current.near = 0.01;
     raycasterRef.current.far = 1000;
     raycasterRef.current.setFromCamera(mouse, cameraRef.current);
@@ -209,15 +225,8 @@ export default function SceneThree() {
 
     const rectangleIntersects = raycasterRef.current.intersectObjects(wallsRef.current, false);
     const proxyIntersects = raycasterRef.current.intersectObjects(hitProxiesRef.current, false);
-
-    console.log('Direct rectangle intersects:', rectangleIntersects.length);
-    console.log('Proxy intersects:', proxyIntersects.length);
-
-    // Vérifier si on a cliqué sur un rectangle existant
-    // Raycaster tous les enfants de la planète (qui incluent les rectangles)
     const intersects = raycasterRef.current.intersectObjects(planetRef.current.children, true);
 
-    console.log('Rectangles intersectés (avec children):', intersects.length);
 
 
     // DEBUG: Trouver le rectangle le plus proche du rayon
@@ -268,7 +277,6 @@ export default function SceneThree() {
       }
     }
 
-    // Désambiguïsation: combiner hits rectangles + proxies et prendre le plus proche
     if (rectangleIntersects.length > 0 || proxyIntersects.length > 0) {
       const rayHits: Array<{ type: 'rect' | 'proxy'; mesh: THREE.Mesh; distance: number }> = [];
       rectangleIntersects.forEach(hit => {
@@ -285,9 +293,6 @@ export default function SceneThree() {
       const chosen = nearestRectHit ?? rayHits[0];
       if (chosen) {
         const clickedRect = chosen.mesh as THREE.Mesh;
-        console.log('[Sélection] Type:', nearestRectHit ? 'rectangle' : 'proxy', '| distance =', chosen.distance);
-        console.log('UserData:', clickedRect.userData);
-        // Ouvrir le picker pour choisir une image
         setSelectedRect(clickedRect);
         setPickerVisible(true);
         return;
@@ -357,7 +362,7 @@ export default function SceneThree() {
 
     if (result && planetRef.current) {
       const rectangle = createRectangle(result.position, result.normal);
-
+      rectangle.layers.set(1);
       // Ajouter les données pour l'animation et l'interaction
       const rectCount = wallsRef.current.length;
       rectangle.userData = {
@@ -482,7 +487,6 @@ export default function SceneThree() {
         weatherRef.current = {};
       }
 
-      // Cleanup butterfly system
       disposeButterflySystem(butterflyDataRef.current);
       butterflyDataRef.current = null;
     };
@@ -514,6 +518,10 @@ export default function SceneThree() {
 
     const camera = new THREE.PerspectiveCamera(60, width / height, 0.1, 100);
     cameraRef.current = camera;
+
+    // Les murs/écrans sont sur le layer 1
+    camera.layers.enable(1);
+    raycasterRef.current.layers.enable(1);
 
     camera.position.set(0, 2, 3);
     camera.rotation.order = "YXZ";
@@ -555,12 +563,16 @@ export default function SceneThree() {
     const rectangles = createRandomRectangles(20);
     const proxies: THREE.Mesh[] = [];
     rectangles.forEach(rect => {
+       rect.layers.set(1); 
       planet.add(rect);
+    
       const proxyGeo = new THREE.SphereGeometry(0.9, 12, 12);
       const proxyMat = new THREE.MeshBasicMaterial({ color: 0xff0000, transparent: true, opacity: 0, depthWrite: false });
       const proxy = new THREE.Mesh(proxyGeo, proxyMat);
       proxy.userData = { target: rect };
       proxy.frustumCulled = false;
+      proxy.layers.set(1);
+
       // Décaler le proxy vers l'extérieur le long de la normale monde pour éviter les confusions
       const worldPos = rect.getWorldPosition(new THREE.Vector3());
       const normal = worldPos.clone().normalize();
@@ -583,6 +595,10 @@ export default function SceneThree() {
       atmosphereData.envMesh.renderOrder = 0;
     }
     atmosphereDataRef.current = atmosphereData;
+console.log("CAM mask", camera.layers.mask);
+console.log("PLANET mask", planet.layers.mask);
+console.log("ENV mask", atmosphereData.envMesh?.layers.mask);
+console.log("RECT0 mask", rectangles[0]?.layers.mask);
 
     // Create grass grid
     const grassData = createGrassGrid({
@@ -753,12 +769,42 @@ export default function SceneThree() {
         }
       });
 
-      // Billboarding: orienter les écrans vers la caméra
-      if (cameraRef.current) {
-        const camWorldPos = cameraRef.current.getWorldPosition(tmpCamWorldPosRef.current);
+      // Billboarding: murs "verticaux" sur la planète (up = normale), tournés vers la caméra
+      // Ici "vertical" = perpendiculaire au sol local: l'axe Y du mur suit la normale radiale.
+      if (cameraRef.current && planetRef.current) {
+        cameraRef.current.getWorldPosition(tmpCamWorldPosRef.current);
+        planetRef.current.getWorldPosition(tmpPlanetWorldPosRef.current);
+
         wallsRef.current.forEach((rect) => {
           rect.getWorldPosition(tmpRectWorldPosRef.current);
-          rect.lookAt(camWorldPos);
+
+          // up = normale radiale au point du mur
+          tmpUpNormalRef.current
+            .copy(tmpRectWorldPosRef.current)
+            .sub(tmpPlanetWorldPosRef.current)
+            .normalize();
+
+          // direction vers caméra, projetée sur le plan tangent (pour éviter de pencher vers le haut/bas)
+          tmpToCamRef.current.copy(tmpCamWorldPosRef.current).sub(tmpRectWorldPosRef.current);
+          const dot = tmpToCamRef.current.dot(tmpUpNormalRef.current);
+          tmpForwardRef.current.copy(tmpToCamRef.current).addScaledVector(tmpUpNormalRef.current, -dot);
+          const lenSq = tmpForwardRef.current.lengthSq();
+          if (lenSq < 1e-8) return;
+          tmpForwardRef.current.multiplyScalar(1 / Math.sqrt(lenSq));
+
+          // base orthonormée
+          tmpRightRef.current.crossVectors(tmpUpNormalRef.current, tmpForwardRef.current).normalize();
+          tmpForwardRef.current.crossVectors(tmpRightRef.current, tmpUpNormalRef.current).normalize();
+
+          tmpBasisMatrixRef.current.makeBasis(tmpRightRef.current, tmpUpNormalRef.current, tmpForwardRef.current);
+          tmpWorldQuatRef.current.setFromRotationMatrix(tmpBasisMatrixRef.current);
+
+          // convertir world quaternion -> local (car le mur est enfant de la planète)
+          const parent = rect.parent;
+          if (!parent) return;
+          parent.getWorldQuaternion(tmpParentWorldQuatRef.current);
+          tmpInvParentWorldQuatRef.current.copy(tmpParentWorldQuatRef.current).invert();
+          rect.quaternion.copy(tmpInvParentWorldQuatRef.current).multiply(tmpWorldQuatRef.current);
         });
       }
 
