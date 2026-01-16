@@ -13,6 +13,7 @@ import ButtonMenu from "../../components/ButtonMenu";
 import ButtonEdit from "../../components/ButtonEdit";
 import ButtonTime from "../../components/ButtonTime";
 import ButtonWeather from "../../components/ButtonWeather";
+import ButtonGrassColor from "../../components/ButtonGrassColor";
 import ButtonFloor from "../../components/ButtonFloor";
 import IconNone from "../../assets/icons/noneclean.svg";
 import IconRain from "../../assets/icons/rainclean.svg";
@@ -40,6 +41,7 @@ import {
   placeRectangleOnSurface
 } from "../../utils/sceneHelpers";
 import { updateGrassTime } from "../../utils/grassShader";
+import { getGrassColorByMode, type GrassColorMode } from "../../utils/grassShader";
 import { updateGrassWrapping, updateGrassShaderFog } from "../../utils/grassHelpers";
 import {
   renderWithAtmosphere,
@@ -146,6 +148,11 @@ export default function SceneThree() {
 
   // Edit mode state
   const [isEditMode, setIsEditMode] = useState(false);
+
+  // Grass Color mode state
+  const [isGrassColorMode, setIsGrassColorMode] = useState(false);
+
+  const [grassColorMode, setGrassColorMode] = useState<'yellow_1' | 'orange' | 'pink' | 'blue' | 'green_1' | 'green_2' | 'yellow_2' | 'red'>('green_1');
 
   // Billboarding temps (évite des allocations par frame)
   const tmpRectWorldPosRef = useRef(new THREE.Vector3());
@@ -502,6 +509,22 @@ export default function SceneThree() {
     motionControlEnabledRef.current = motionControlEnabled;
   }, [motionControlEnabled]);
 
+  useEffect(() => {
+    const mat = grassMaterialRef.current;
+    if (!mat) return;
+
+    const v = getGrassColorByMode(grassColorMode as GrassColorMode);
+
+    if (mat.uniforms?.uGrassColor?.value) {
+      (mat.uniforms.uGrassColor.value as THREE.Vector3).copy(v);
+    } else {
+      mat.uniforms.uGrassColor = { value: v };
+    }
+
+    mat.needsUpdate = true;
+  }, [grassColorMode]);
+
+
 
   // Cleanup resources when scene reloads
   useEffect(() => {
@@ -616,9 +639,9 @@ export default function SceneThree() {
     const rectangles = createRandomRectangles(20);
     const proxies: THREE.Mesh[] = [];
     rectangles.forEach(rect => {
-       rect.layers.set(1); 
+      rect.layers.set(1);
       planet.add(rect);
-    
+
       const proxyGeo = new THREE.SphereGeometry(0.9, 12, 12);
       const proxyMat = new THREE.MeshBasicMaterial({ color: 0xff0000, transparent: true, opacity: 0, depthWrite: false });
       const proxy = new THREE.Mesh(proxyGeo, proxyMat);
@@ -649,10 +672,10 @@ export default function SceneThree() {
       atmosphereData.envMesh.renderOrder = 0;
     }
     atmosphereDataRef.current = atmosphereData;
-console.log("CAM mask", camera.layers.mask);
-console.log("PLANET mask", planet.layers.mask);
-console.log("ENV mask", atmosphereData.envMesh?.layers.mask);
-console.log("RECT0 mask", rectangles[0]?.layers.mask);
+    console.log("CAM mask", camera.layers.mask);
+    console.log("PLANET mask", planet.layers.mask);
+    console.log("ENV mask", atmosphereData.envMesh?.layers.mask);
+    console.log("RECT0 mask", rectangles[0]?.layers.mask);
 
     // Create grass grid
     const grassData = createGrassGrid({
@@ -972,7 +995,7 @@ console.log("RECT0 mask", rectangles[0]?.layers.mask);
         />
       )}
 
-      {!isEditMode && (
+      {!isEditMode && !isGrassColorMode && (
         <ButtonEdit
           position="top-right"
           gap={12}
@@ -986,7 +1009,7 @@ console.log("RECT0 mask", rectangles[0]?.layers.mask);
         />
       )}
 
-      {isEditMode && (
+      {isEditMode && !isGrassColorMode && (
         <ButtonEdit
           position="top-right"
           gap={12}
@@ -1020,7 +1043,8 @@ console.log("RECT0 mask", rectangles[0]?.layers.mask);
 
 
       {/* Weather toggle */}
-      {isEditMode && (
+      {isEditMode && !isGrassColorMode && (
+
         <View style={styles.editParamsContainer}>
           <ButtonTime
             gap={8}
@@ -1068,6 +1092,7 @@ console.log("RECT0 mask", rectangles[0]?.layers.mask);
               },
             ]}
           />
+
           <ButtonWeather
             gap={8}
             activeId={weatherMode}
@@ -1115,10 +1140,73 @@ console.log("RECT0 mask", rectangles[0]?.layers.mask);
       )}
 
       {isEditMode && (
-      <ButtonFloor onPress={handleResetView} />
+        <ButtonFloor onPress={() => setIsGrassColorMode(v => !v)} />
       )}
 
-
+      {isGrassColorMode && (
+        <ButtonGrassColor
+          gap={4}
+          activeId={grassColorMode}
+          buttons={[
+            {
+              id: 'yellow_1',
+              color: '#F3D98F',
+              onPress: () => {
+                setGrassColorMode('yellow_1');
+              },
+            },
+            {
+              id: 'orange',
+              color: '#F18C22',
+              onPress: () => {
+                setGrassColorMode('orange');
+              },
+            },
+            {
+              id: 'pink',
+              color: '#E36887',
+              onPress: () => {
+                setGrassColorMode('pink');
+              },
+            },
+            {
+              id: 'blue',
+              color: '#7298C7',
+              onPress: () => {
+                setGrassColorMode('blue');
+              },
+            },
+            {
+              id: 'green_1',
+              color: '#B4B535',
+              onPress: () => {
+                setGrassColorMode('green_1');
+              },
+            },
+            {
+              id: 'green_2',
+              color: '#2B885C',
+              onPress: () => {
+                setGrassColorMode('green_2');
+              },
+            },
+            {
+              id: 'yellow_2',
+              color: '#FAD062',
+              onPress: () => {
+                setGrassColorMode('yellow_2');
+              },
+            },
+            {
+              id: 'red',
+              color: '#F20712',
+              onPress: () => {
+                setGrassColorMode('red');
+              },
+            },
+          ]}
+        />
+      )}
 
       {/* Modal de sélection d'image */}
       <Modal
