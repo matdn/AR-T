@@ -510,19 +510,35 @@ export default function SceneThree() {
   }, [motionControlEnabled]);
 
   useEffect(() => {
-    const mat = grassMaterialRef.current;
-    if (!mat) return;
+    const v = getGrassColorByMode(grassColorMode);
 
-    const v = getGrassColorByMode(grassColorMode as GrassColorMode);
-
-    if (mat.uniforms?.uGrassColor?.value) {
-      (mat.uniforms.uGrassColor.value as THREE.Vector3).copy(v);
-    } else {
-      mat.uniforms.uGrassColor = { value: v };
+    // --- GRASS SHADER ---
+    const grassMat = grassMaterialRef.current;
+    if (grassMat?.uniforms?.uGrassColor?.value) {
+      (grassMat.uniforms.uGrassColor.value as THREE.Vector3).copy(v);
     }
 
-    mat.needsUpdate = true;
+    // --- PLANET MATERIAL ---
+    const planet = planetRef.current;
+    if (planet) {
+      const mat = planet.material;
+      if (!mat) return;
+
+      // si tableau de matériaux
+      if (Array.isArray(mat)) {
+        mat.forEach((m) => {
+          const anyM = m as any;
+          if (anyM?.color?.setRGB) anyM.color.setRGB(v.x, v.y, v.z);
+          anyM.needsUpdate = true;
+        });
+      } else {
+        const m = mat as THREE.MeshStandardMaterial;
+        m.color.setRGB(v.x, v.y, v.z);
+        m.needsUpdate = true;
+      }
+    }
   }, [grassColorMode]);
+
 
 
 
