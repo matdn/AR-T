@@ -125,12 +125,12 @@ export default function SceneThree() {
   };
 
 
-  // Weather systems (rain/snow)
+  // Weather systems (rain/snow/butterfly)
   const weatherRef = useRef<{
     rain?: { group: THREE.Group; update: (dt?: number) => void; material: THREE.SpriteMaterial };
     snow?: { group: THREE.Group; update: (dt?: number) => void; material: THREE.SpriteMaterial };
   }>({});
-  const [weatherMode, setWeatherMode] = useState<'rain' | 'snow' | 'none'>('none');
+  const [weatherMode, setWeatherMode] = useState<'rain' | 'snow' | 'butterfly' | 'none'>('none');
 
   // Time mode for LUT
   const [timeMode, setTimeMode] = useState<'morning' | 'midday' | 'evening' | 'night'>('evening');
@@ -739,9 +739,15 @@ export default function SceneThree() {
     };
 
     // Apply initial weather mode
-    const applyWeatherVisibility = (mode: 'rain' | 'snow' | 'none') => {
+    const applyWeatherVisibility = (mode: 'rain' | 'snow' | 'butterfly' | 'none') => {
       if (weatherRef.current.rain) weatherRef.current.rain.group.visible = (mode === 'rain');
       if (weatherRef.current.snow) weatherRef.current.snow.group.visible = (mode === 'snow');
+      // Les papillons sont gérés séparément via butterflyDataRef
+      if (butterflyDataRef.current) {
+        butterflyDataRef.current.sprites.forEach(sprite => {
+          sprite.visible = (mode === 'butterfly');
+        });
+      }
     };
     applyWeatherVisibility(weatherMode);
 
@@ -768,6 +774,10 @@ export default function SceneThree() {
       try {
         const butterflyData = await initializeButterflySystem(scene, 50);
         butterflyDataRef.current = butterflyData;
+        // Désactiver les papillons par défaut
+        butterflyData.sprites.forEach(sprite => {
+          sprite.visible = false;
+        });
       } catch (e) {
         console.warn('Erreur initialisation système papillon:', e);
       }
@@ -1121,6 +1131,11 @@ export default function SceneThree() {
                   setWeatherMode('none');
                   if (weatherRef.current.rain) weatherRef.current.rain.group.visible = false;
                   if (weatherRef.current.snow) weatherRef.current.snow.group.visible = false;
+                  if (butterflyDataRef.current) {
+                    butterflyDataRef.current.sprites.forEach(sprite => {
+                      sprite.visible = false;
+                    });
+                  }
                 },
               },
               {
@@ -1130,6 +1145,11 @@ export default function SceneThree() {
                   setWeatherMode('rain');
                   if (weatherRef.current.rain) weatherRef.current.rain.group.visible = true;
                   if (weatherRef.current.snow) weatherRef.current.snow.group.visible = false;
+                  if (butterflyDataRef.current) {
+                    butterflyDataRef.current.sprites.forEach(sprite => {
+                      sprite.visible = false;
+                    });
+                  }
                 },
               },
               {
@@ -1139,6 +1159,25 @@ export default function SceneThree() {
                   setWeatherMode('snow');
                   if (weatherRef.current.rain) weatherRef.current.rain.group.visible = false;
                   if (weatherRef.current.snow) weatherRef.current.snow.group.visible = true;
+                  if (butterflyDataRef.current) {
+                    butterflyDataRef.current.sprites.forEach(sprite => {
+                      sprite.visible = false;
+                    });
+                  }
+                },
+              },
+              {
+                id: 'butterfly',
+                Icon: IconNone,
+                onPress: () => {
+                  setWeatherMode('butterfly');
+                  if (weatherRef.current.rain) weatherRef.current.rain.group.visible = false;
+                  if (weatherRef.current.snow) weatherRef.current.snow.group.visible = false;
+                  if (butterflyDataRef.current) {
+                    butterflyDataRef.current.sprites.forEach(sprite => {
+                      sprite.visible = true;
+                    });
+                  }
                 },
               },
             ]}
