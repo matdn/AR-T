@@ -991,6 +991,7 @@ export default function SceneThree() {
         <ButtonMenu
           position="top-left"
           gap={12}
+          activeId={motionControlEnabled ? 'motion' : undefined}
           buttons={[
             {
               id: 'orientation',
@@ -1042,7 +1043,7 @@ export default function SceneThree() {
       {motionControlEnabled && <ResetButton onPress={handleResetView} />}
 
       <Joystick
-        containerStyle={{ right: 50, bottom: 50 }}
+        containerStyle={{ left: 75, bottom: 50 }}
         position={joystickPosition}
         onMove={handleJoystickMove}
         onRelease={handleJoystickRelease}
@@ -1050,7 +1051,7 @@ export default function SceneThree() {
 
       {!motionControlEnabled && (
         <Joystick
-          containerStyle={{ left: 75, bottom: 50 }}
+          containerStyle={{ right: 50, bottom: 50 }}
           position={lookJoystickPosition}
           onMove={handleLookJoystickMove}
           onRelease={handleLookJoystickRelease}

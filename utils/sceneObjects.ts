@@ -4,7 +4,7 @@ import { createGrassShaderMaterial } from './grassShader';
 export function createPlanet(): THREE.Mesh {
   const geometry = new THREE.SphereGeometry(50, 64, 64);
   const material = new THREE.MeshStandardMaterial({ 
-    color: 0x88cc88, 
+    color: 0xB4B535, 
     roughness: 0.8,
     metalness: 0.2,
     wireframe: false

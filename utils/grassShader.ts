@@ -35,7 +35,7 @@ export function createGrassShaderMaterial(options: GrassShaderOptions = {}) {
   const {
     sphereCenter = new THREE.Vector3(0, -50, 0),
     sphereRadius = 50 - 0.1,
-    grassColor = new THREE.Vector3(0.41, 1.0, 0.5),
+    grassColor = new THREE.Vector3(0.705, 0.709, 0.207),
     windStrength = 0.1,
   } = options;
 

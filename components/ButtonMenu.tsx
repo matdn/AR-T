@@ -13,13 +13,15 @@ interface ButtonMenuProps {
   position?: 'top-left' | 'top-right' | 'bottom-left' | 'bottom-right';
   gap?: number;
   containerStyle?: ViewStyle;
+  activeId?: string;
 }
 
-export default function ButtonMenu({ 
-  buttons, 
+export default function ButtonMenu({
+  buttons,
   position = 'top-left',
   gap = 12,
-  containerStyle
+  containerStyle,
+  activeId
 }: ButtonMenuProps) {
   const { width, height } = useWindowDimensions();
   const isLandscape = width > height;
@@ -43,8 +45,9 @@ export default function ButtonMenu({
     }
   };
 
+
   return (
-    <View 
+    <View
       style={[
         styles.groupContainer,
         getPositionStyle(),
@@ -55,10 +58,12 @@ export default function ButtonMenu({
         containerStyle
       ]}
     >
-      {buttons.map((button) => (
-        <TouchableOpacity 
+      {buttons.map((button) => {
+        const isActive = button.id === activeId;
+        return (
+        <TouchableOpacity
           key={button.id}
-          style={styles.button} 
+          style={[styles.button, isActive ? styles.buttonActive : styles.buttonInactive]}
           onPress={button.onPress}
           activeOpacity={0.7}
         >
@@ -71,7 +76,8 @@ export default function ButtonMenu({
             <Text style={styles.buttonText}>{button.label}</Text>
           )}
         </TouchableOpacity>
-      ))}
+        );
+      })}
     </View>
   );
 }
@@ -87,6 +93,12 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  buttonActive: {
+    backgroundColor: '#0900FF'
+  },
+  buttonInactive: {
+    backgroundColor: 'rgba(9, 0, 255, 0.25)',
   },
   buttonText: {
     fontSize: 12,
