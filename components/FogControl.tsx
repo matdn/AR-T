@@ -54,7 +54,7 @@ export default function FogControl({
       {/* <Text style={styles.fogLabel}>Fog: {fogDensity.toFixed(2)}</Text> */}
       <Image
         style={{ width: 19, height: 20 }}
-        source={require('../assets/images/fog.png')}
+        source={require('../assets/icons/fogicon.png')}
       />
       <Slider
         style={[styles.fogSlider, { transform: [{ scaleY: 1 }] }]}

@@ -18,6 +18,7 @@ import ButtonFloor from "../../components/ButtonFloor";
 import IconNone from "../../assets/icons/noneclean.svg";
 import IconRain from "../../assets/icons/rainclean.svg";
 import IconSnow from "../../assets/icons/snowclean.svg";
+import IconButterfly from "../../assets/icons/butterflyclean.svg";
 import IconMorning from "../../assets/icons/morningclean.svg";
 import IconEvening from "../../assets/icons/eveningclean.svg";
 import IconNight from "../../assets/icons/nightclean.svg";
@@ -1168,7 +1169,7 @@ export default function SceneThree() {
               },
               {
                 id: 'butterfly',
-                Icon: IconNone,
+                Icon: IconButterfly,
                 onPress: () => {
                   setWeatherMode('butterfly');
                   if (weatherRef.current.rain) weatherRef.current.rain.group.visible = false;
