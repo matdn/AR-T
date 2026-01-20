@@ -5,7 +5,7 @@ interface ButtonItem {
   id: string;
   icon?: any;
   label?: string;
-  onPress: () => void;
+  onPress?: () => void;
 }
 
 interface ButtonMenuProps {
