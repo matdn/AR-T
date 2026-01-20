@@ -44,7 +44,7 @@ export const createWeatherSystem = (
 
     const rainGroup = new THREE.Group();
     const rainSprites: RainSprite[] = [];
-    var rainTexture = new TextureLoader().load(
+    let rainTexture = new TextureLoader().load(
         require("../assets/textures/goutte.png")
     );
 

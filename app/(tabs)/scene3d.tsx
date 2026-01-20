@@ -30,7 +30,6 @@ import { setDeviceQuaternion } from "../../utils/quaternion";
 import {
   createPlanet,
   addGridLinesToPlanet,
-  createSkySphere,
   createRandomRectangles,
   createRectangle,
   createGrassGrid,
@@ -49,7 +48,6 @@ import {
   type AtmosphereRenderData
 } from "../../utils/atmosphereHelpers";
 import {
-  createAtmosphereMeshes,
   updateAtmosphereLUT,
 } from "@/components/Atmosphere";
 import { createWeatherSystem } from "@/components/Weather";
@@ -77,7 +75,7 @@ export default function SceneThree() {
   const [screenDimensions, setScreenDimensions] = useState({ width: 0, height: 0 });
   const [sceneKey, setSceneKey] = useState(0); // Pour forcer le reload du GLView
   const [viewSize, setViewSize] = useState({ width: 0, height: 0 }); // Taille CSS du GLView
-  const [tapYBiasNDC, setTapYBiasNDC] = useState(-1); // Petit biais vertical en NDC pour remonter le rayon
+  const [tapYBiasNDC] = useState(-1); // Petit biais vertical en NDC pour remonter le rayon
 
   const baseQuatRef = useRef<THREE.Quaternion>(new THREE.Quaternion());
   const deviceQuatRef = useRef<THREE.Quaternion>(new THREE.Quaternion());
@@ -101,6 +99,11 @@ export default function SceneThree() {
 
   const atmosphereDataRef = useRef<AtmosphereRenderData | null>(null);
   const innerAtmosphereRef = useRef<THREE.Group | null>(null);
+
+  // HDRI (remplace la LUT): background + environment
+  const hdriTextureRef = useRef<THREE.Texture | null>(null);
+  const hdriEnvRTRef = useRef<THREE.WebGLRenderTarget | null>(null);
+  const pmremGenRef = useRef<THREE.PMREMGenerator | null>(null);
 
   // joystick look (quand gyro OFF)
   const lookInputRef = useRef({ x: 0, y: 0 }); // x=yaw, y=pitch ([-1..1] ou un range similaire)
@@ -158,7 +161,6 @@ export default function SceneThree() {
   // Billboarding temps (évite des allocations par frame)
   const tmpRectWorldPosRef = useRef(new THREE.Vector3());
   const tmpCamWorldPosRef = useRef(new THREE.Vector3());
-  const tmpBillboardTargetRef = useRef(new THREE.Vector3());
   const tmpPlanetWorldPosRef = useRef(new THREE.Vector3());
   const tmpUpNormalRef = useRef(new THREE.Vector3());
   const tmpToCamRef = useRef(new THREE.Vector3());
@@ -243,6 +245,7 @@ export default function SceneThree() {
   };
 
   const handleScreenTap = (event: GestureResponderEvent) => {
+<<<<<<< Updated upstream
 
     if (isGrassColorMode) {
       setIsGrassColorMode(false);
@@ -250,166 +253,50 @@ export default function SceneThree() {
     }
 
     if (!cameraRef.current || !planetRef.current || !raycasterRef.current) return;
+=======
+    try {
+      if (!cameraRef.current || !planetRef.current || !raycasterRef.current) return;
+>>>>>>> Stashed changes
 
-    const x = event.nativeEvent.locationX;
-    const y = event.nativeEvent.locationY;
+      const x = event.nativeEvent.locationX;
+      const y = event.nativeEvent.locationY;
 
-    console.log('Touch détecté à:', x, y);
-
-    // Créer un raycaster pour détecter les clics sur les rectangles
-    const mouse = new THREE.Vector2();
-    // Fallback robust pour éviter Infinity quand la vue n'est pas encore mesurée
-    let w = viewSize.width;
-    let h = viewSize.height;
-    if (!w || !h) {
-      const sizeVec = new THREE.Vector2();
-      rendererRef.current?.getSize(sizeVec);
-      w = sizeVec.x || screenDimensions.width;
-      h = sizeVec.y || screenDimensions.height;
-    }
-    if (!w || !h) {
-      console.log('View size indéterminée, annulation du raycast. w/h =', w, h);
-      return;
-    }
-    mouse.x = (x / w) * 2 - 1;
-    mouse.y = (-(y / h) * 2 + 1) + tapYBiasNDC;
-
-    raycasterRef.current.near = 0.01;
-    raycasterRef.current.far = 1000;
-    raycasterRef.current.setFromCamera(mouse, cameraRef.current);
-
-    console.log('Mouse coords:', mouse.x, mouse.y, 'biasNDC=', tapYBiasNDC, ' (w,h)=', w, h);
-
-    planetRef.current.updateMatrixWorld(true);
-    planetRef.current.traverse(obj => obj.updateMatrixWorld(true));
-
-    const rectangleIntersects = raycasterRef.current.intersectObjects(wallsRef.current, false);
-    const proxyIntersects = raycasterRef.current.intersectObjects(hitProxiesRef.current, false);
-    const intersects = raycasterRef.current.intersectObjects(planetRef.current.children, true);
-
-
-
-    // DEBUG: Trouver le rectangle le plus proche du rayon
-    if (wallsRef.current.length > 0) {
-      const ray = raycasterRef.current.ray;
-
-      let closestDistance = Infinity;
-      let closestIndex = -1;
-      let closestWorldPos = new THREE.Vector3();
-      let closestLocalPos = new THREE.Vector3();
-
-      for (let i = 0; i < wallsRef.current.length; i++) {
-        const rect = wallsRef.current[i];
-        const worldPos = rect.getWorldPosition(new THREE.Vector3());
-        const distance = ray.distanceToPoint(worldPos);
-
-        if (distance < closestDistance) {
-          closestDistance = distance;
-          closestIndex = i;
-          closestWorldPos.copy(worldPos);
-          closestLocalPos.copy(rect.position);
-        }
+      // Créer un raycaster pour détecter les clics sur les rectangles via des proxies simples
+      const mouse = new THREE.Vector2();
+      let w = viewSize.width;
+      let h = viewSize.height;
+      if (!w || !h) {
+        const sizeVec = new THREE.Vector2();
+        rendererRef.current?.getSize(sizeVec);
+        w = sizeVec.x || screenDimensions.width;
+        h = sizeVec.y || screenDimensions.height;
       }
-      if (closestIndex !== -1) {
-        const cam = cameraRef.current;
-        const ray = raycasterRef.current.ray;
-        const projected = closestWorldPos.clone();
-        if (cam) {
-          projected.project(cam);
-        }
-        const screenX = ((projected.x + 1) / 2) * w;
-        const screenY = ((1 - projected.y) / 2) * h;
+      if (!w || !h) return;
 
-        const rectObj = wallsRef.current[closestIndex];
-        const bbox = new THREE.Box3().setFromObject(rectObj);
-        const bboxCenter = new THREE.Vector3();
-        bbox.getCenter(bboxCenter);
-        const distToBBoxCenter = ray.distanceToPoint(bboxCenter);
+      mouse.x = (x / w) * 2 - 1;
+      mouse.y = (-(y / h) * 2 + 1) + tapYBiasNDC;
 
-        console.log('=== RECTANGLE LE PLUS PROCHE ===');
-        console.log('Index:', closestIndex, 'ID:', rectObj.userData?.id, 'Message:', rectObj.userData?.message);
-        console.log('Rayon origine:', ray.origin, 'direction:', ray.direction);
-        console.log('Position mondiale:', closestWorldPos, '| Position locale:', closestLocalPos);
-        console.log('Distance au rayon (pivot):', closestDistance);
-        console.log('Centre BBox monde:', bboxCenter, 'Distance au rayon (BBox):', distToBBoxCenter);
-        console.log('Projection NDC:', projected.x, projected.y, '=> écran (px):', screenX, screenY, ' (w,h)=', w, h);
-        console.log('================================');
-      }
-    }
+      raycasterRef.current.near = 0.01;
+      raycasterRef.current.far = 1000;
+      raycasterRef.current.setFromCamera(mouse, cameraRef.current);
 
-    if (rectangleIntersects.length > 0 || proxyIntersects.length > 0) {
-      const rayHits: Array<{ type: 'rect' | 'proxy'; mesh: THREE.Mesh; distance: number }> = [];
-      rectangleIntersects.forEach(hit => {
-        rayHits.push({ type: 'rect', mesh: hit.object as THREE.Mesh, distance: hit.distance });
-      });
-      proxyIntersects.forEach(hit => {
-        const proxy = hit.object as THREE.Mesh & { userData: any };
-        const target = proxy.userData?.target as THREE.Mesh | undefined;
-        // Si le proxy pointe un rectangle, on convertit en hit rectangle, sinon on garde proxy
-        rayHits.push({ type: target ? 'rect' : 'proxy', mesh: (target ?? hit.object) as THREE.Mesh, distance: hit.distance });
-      });
-      rayHits.sort((a, b) => a.distance - b.distance);
-      const nearestRectHit = rayHits.find(h => h.type === 'rect');
-      const chosen = nearestRectHit ?? rayHits[0];
-      if (chosen) {
-        const clickedRect = chosen.mesh as THREE.Mesh;
-        setSelectedRect(clickedRect);
-        setPickerVisible(true);
-        return;
-      }
-    }
+      planetRef.current.updateMatrixWorld(true);
 
-    if (intersects.length > 0) {
-      // Filtrer pour ne garder que les rectangles (pas les lignes de grille)
-      const rectangleIntersect = intersects.find(intersect =>
-        wallsRef.current.includes(intersect.object as THREE.Mesh)
-      );
-
-      if (rectangleIntersect) {
-        // Clic sur un rectangle existant
-        const clickedRect = rectangleIntersect.object as THREE.Mesh;
-        console.log('Rectangle cliqué (children):', clickedRect.userData);
-
-        // Changer la couleur en rouge
-        if (clickedRect.material && 'color' in clickedRect.material) {
-          (clickedRect.material as THREE.MeshStandardMaterial).color.setHex(0xff0000);
-        }
-
-        if (clickedRect.userData.message) {
-          alert(clickedRect.userData.message);
-        }
-        return;
-      }
-    }
-
-    // Fallback avancé: choisir le rectangle dont le centre est le plus proche du rayon
-    if (wallsRef.current.length > 0) {
-      const ray = raycasterRef.current.ray;
-      let best: { rect: THREE.Mesh; center: THREE.Vector3; dist: number } | null = null;
-      for (let i = 0; i < wallsRef.current.length; i++) {
-        const rect = wallsRef.current[i];
-        const bbox = new THREE.Box3().setFromObject(rect);
-        const center = new THREE.Vector3();
-        bbox.getCenter(center);
-        const dist = ray.distanceToPoint(center);
-        if (!best || dist < best.dist) best = { rect, center, dist };
-      }
-      if (best) {
-        const size = new THREE.Vector3();
-        new THREE.Box3().setFromObject(best.rect).getSize(size);
-        const diag = size.length();
-        const threshold = Math.max(1.0, diag * 0.45); // marge pour faciliter les sélections lointaines
-        if (best.dist <= threshold) {
-          console.log('[Sélection] fallback par centre proche | dist =', best.dist, ' | seuil =', threshold);
-          const clickedRect = best.rect;
+      // On raycast uniquement des sphères proxy (beaucoup plus stable que de raycaster toute la planète)
+      const proxyHits = raycasterRef.current.intersectObjects(hitProxiesRef.current, false);
+      if (proxyHits.length > 0) {
+        proxyHits.sort((a, b) => a.distance - b.distance);
+        const hitObj = proxyHits[0].object as THREE.Mesh & { userData?: any };
+        const target = hitObj.userData?.target as THREE.Mesh | undefined;
+        const clickedRect = (target ?? null) as THREE.Mesh | null;
+        if (clickedRect) {
           setSelectedRect(clickedRect);
           setPickerVisible(true);
           return;
         }
       }
-    }
 
-    // Sinon, placer un nouveau rectangle
+      // Sinon, placer un nouveau rectangle
     const result = placeRectangleOnSurface(
       raycasterRef.current,
       cameraRef.current,
@@ -450,6 +337,9 @@ export default function SceneThree() {
       proxy.position.addScaledVector(normal, 0.2);
       rectangle.add(proxy);
       hitProxiesRef.current.push(proxy);
+    }
+    } catch (e) {
+      console.error('[handleScreenTap] erreur:', e);
     }
   };
 
@@ -563,6 +453,18 @@ export default function SceneThree() {
         atmosphereDataRef.current.postMaterial?.dispose();
         atmosphereDataRef.current = null;
       }
+
+      // Cleanup HDRI resources
+      if (sceneRef.current) {
+        try { (sceneRef.current as any).background = null; } catch { }
+        try { (sceneRef.current as any).environment = null; } catch { }
+      }
+      try { hdriEnvRTRef.current?.dispose?.(); } catch { }
+      try { pmremGenRef.current?.dispose?.(); } catch { }
+      try { hdriTextureRef.current?.dispose?.(); } catch { }
+      hdriEnvRTRef.current = null;
+      pmremGenRef.current = null;
+      hdriTextureRef.current = null;
 
       // Cleanup grass material
       if (grassMaterialRef.current) {
@@ -682,6 +584,7 @@ export default function SceneThree() {
     wallsRef.current = rectangles;
     hitProxiesRef.current = proxies;
 
+<<<<<<< Updated upstream
     // Create atmosphere (remplace le sky sphere)
     const atmosphereData = createAtmosphereMeshes(scene, width, height, {
       planetPosition: new THREE.Vector3(0, -50, 0),
@@ -699,6 +602,52 @@ export default function SceneThree() {
     console.log("PLANET mask", planet.layers.mask);
     console.log("ENV mask", atmosphereData.envMesh?.layers.mask);
     console.log("RECT0 mask", rectangles[0]?.layers.mask);
+=======
+    // Remplacer la LUT par un HDRI (background + lighting)
+    atmosphereDataRef.current = null;
+    (async () => {
+      try {
+        const skyByMode: Record<string, any> = {
+          morning: require('../../assets/textures/sky_16_2k.png'),
+          midday: require('../../assets/textures/sky_17_2k.png'),
+          evening: require('../../assets/textures/sky_40_2k.png'),
+          night: require('../../assets/textures/sky_402_2k.png'),
+        };
+
+        const skyModule = skyByMode[timeMode] ?? skyByMode.evening;
+        const skyAsset = Asset.fromModule(skyModule);
+        await skyAsset.downloadAsync();
+        const skyUri = skyAsset.localUri ?? skyAsset.uri;
+
+        const skyTexture = await new TextureLoader().loadAsync(skyUri);
+        skyTexture.mapping = THREE.EquirectangularReflectionMapping;
+        skyTexture.wrapS = THREE.ClampToEdgeWrapping;
+        skyTexture.wrapT = THREE.ClampToEdgeWrapping;
+        skyTexture.minFilter = THREE.LinearFilter;
+        skyTexture.magFilter = THREE.LinearFilter;
+        skyTexture.generateMipmaps = false;
+        skyTexture.flipY = false;
+
+        // Nettoyage de l'ancien HDRI si existant
+        try { hdriEnvRTRef.current?.dispose?.(); } catch { }
+        try { pmremGenRef.current?.dispose?.(); } catch { }
+        try { hdriTextureRef.current?.dispose?.(); } catch { }
+
+        const pmrem = new THREE.PMREMGenerator(renderer as any);
+        pmrem.compileEquirectangularShader();
+        const envRT = pmrem.fromEquirectangular(skyTexture);
+
+        hdriTextureRef.current = skyTexture;
+        pmremGenRef.current = pmrem;
+        hdriEnvRTRef.current = envRT;
+
+        scene.background = skyTexture;
+        scene.environment = envRT.texture;
+      } catch (e) {
+        console.warn('[HDRI] Échec chargement HDRI:', e);
+      }
+    })();
+>>>>>>> Stashed changes
 
     // Create grass grid
     const grassData = createGrassGrid({
