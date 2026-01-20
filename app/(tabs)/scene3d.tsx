@@ -1,7 +1,7 @@
 import { GLView, type ExpoWebGLRenderingContext } from "expo-gl";
 import { Renderer, TextureLoader } from "expo-three";
 import React, { useEffect, useRef, useState } from "react";
-import { StyleSheet, View, GestureResponderEvent, Modal, TouchableOpacity, Text } from "react-native";
+import { StyleSheet, View, GestureResponderEvent, Modal, TouchableOpacity, Text, Pressable } from "react-native";
 import * as ImagePicker from 'expo-image-picker';
 import { Asset } from 'expo-asset';
 import * as ImageManipulator from 'expo-image-manipulator';
@@ -13,10 +13,12 @@ import ButtonMenu from "../../components/ButtonMenu";
 import ButtonEdit from "../../components/ButtonEdit";
 import ButtonTime from "../../components/ButtonTime";
 import ButtonWeather from "../../components/ButtonWeather";
+import ButtonGrassColor from "../../components/ButtonGrassColor";
 import ButtonFloor from "../../components/ButtonFloor";
 import IconNone from "../../assets/icons/noneclean.svg";
 import IconRain from "../../assets/icons/rainclean.svg";
 import IconSnow from "../../assets/icons/snowclean.svg";
+import IconButterfly from "../../assets/icons/butterflyclean.svg";
 import IconMorning from "../../assets/icons/morningclean.svg";
 import IconEvening from "../../assets/icons/eveningclean.svg";
 import IconNight from "../../assets/icons/nightclean.svg";
@@ -40,6 +42,7 @@ import {
   placeRectangleOnSurface
 } from "../../utils/sceneHelpers";
 import { updateGrassTime } from "../../utils/grassShader";
+import { getGrassColorByMode, type GrassColorMode } from "../../utils/grassShader";
 import { updateGrassWrapping, updateGrassShaderFog } from "../../utils/grassHelpers";
 import {
   renderWithAtmosphere,
@@ -61,7 +64,7 @@ export default function SceneThree() {
   const animationFrameId = useRef<number | null>(null);
   const rotationRef = useDeviceMotion();
   const [isLandscape, setIsLandscape] = useState(true);
-  const [motionControlEnabled, setMotionControlEnabled] = useState(true);
+  const [motionControlEnabled, setMotionControlEnabled] = useState(false);
 
   const cameraRef = useRef<THREE.PerspectiveCamera | null>(null);
   const cubeRef = useRef<THREE.Mesh | null>(null);
@@ -123,15 +126,15 @@ export default function SceneThree() {
   };
 
 
-  // Weather systems (rain/snow)
+  // Weather systems (rain/snow/butterfly)
   const weatherRef = useRef<{
     rain?: { group: THREE.Group; update: (dt?: number) => void; material: THREE.SpriteMaterial };
     snow?: { group: THREE.Group; update: (dt?: number) => void; material: THREE.SpriteMaterial };
   }>({});
-  const [weatherMode, setWeatherMode] = useState<'rain' | 'snow' | 'none'>('none');
+  const [weatherMode, setWeatherMode] = useState<'rain' | 'snow' | 'butterfly' | 'none'>('none');
 
   // Time mode for LUT
-  const [timeMode, setTimeMode] = useState<'morning' | 'midday' | 'evening' | 'night'>('evening');
+  const [timeMode, setTimeMode] = useState<'morning' | 'midday' | 'evening' | 'night'>('midday');
 
   //BUTTERFLY
   const butterflyDataRef = useRef<ButterflyData | null>(null);
@@ -146,6 +149,11 @@ export default function SceneThree() {
 
   // Edit mode state
   const [isEditMode, setIsEditMode] = useState(false);
+
+  // Grass Color mode state
+  const [isGrassColorMode, setIsGrassColorMode] = useState(false);
+
+  const [grassColorMode, setGrassColorMode] = useState<'yellow_1' | 'orange' | 'pink' | 'blue' | 'green_1' | 'green_2' | 'yellow_2' | 'red'>('green_1');
 
   // Billboarding temps (évite des allocations par frame)
   const tmpRectWorldPosRef = useRef(new THREE.Vector3());
@@ -235,6 +243,12 @@ export default function SceneThree() {
   };
 
   const handleScreenTap = (event: GestureResponderEvent) => {
+
+    if (isGrassColorMode) {
+      setIsGrassColorMode(false);
+      return;
+    }
+
     if (!cameraRef.current || !planetRef.current || !raycasterRef.current) return;
 
     const x = event.nativeEvent.locationX;
@@ -502,6 +516,38 @@ export default function SceneThree() {
     motionControlEnabledRef.current = motionControlEnabled;
   }, [motionControlEnabled]);
 
+  useEffect(() => {
+    const v = getGrassColorByMode(grassColorMode);
+
+    // --- GRASS SHADER ---
+    const grassMat = grassMaterialRef.current;
+    if (grassMat?.uniforms?.uGrassColor?.value) {
+      (grassMat.uniforms.uGrassColor.value as THREE.Vector3).copy(v);
+    }
+
+    // --- PLANET MATERIAL ---
+    const planet = planetRef.current;
+    if (planet) {
+      const mat = planet.material;
+      if (!mat) return;
+
+      // si tableau de matériaux
+      if (Array.isArray(mat)) {
+        mat.forEach((m) => {
+          const anyM = m as any;
+          if (anyM?.color?.setRGB) anyM.color.setRGB(v.x, v.y, v.z);
+          anyM.needsUpdate = true;
+        });
+      } else {
+        const m = mat as THREE.MeshStandardMaterial;
+        m.color.setRGB(v.x, v.y, v.z);
+        m.needsUpdate = true;
+      }
+    }
+  }, [grassColorMode]);
+
+
+
 
   // Cleanup resources when scene reloads
   useEffect(() => {
@@ -616,9 +662,9 @@ export default function SceneThree() {
     const rectangles = createRandomRectangles(20);
     const proxies: THREE.Mesh[] = [];
     rectangles.forEach(rect => {
-       rect.layers.set(1); 
+      rect.layers.set(1);
       planet.add(rect);
-    
+
       const proxyGeo = new THREE.SphereGeometry(0.9, 12, 12);
       const proxyMat = new THREE.MeshBasicMaterial({ color: 0xff0000, transparent: true, opacity: 0, depthWrite: false });
       const proxy = new THREE.Mesh(proxyGeo, proxyMat);
@@ -649,10 +695,10 @@ export default function SceneThree() {
       atmosphereData.envMesh.renderOrder = 0;
     }
     atmosphereDataRef.current = atmosphereData;
-console.log("CAM mask", camera.layers.mask);
-console.log("PLANET mask", planet.layers.mask);
-console.log("ENV mask", atmosphereData.envMesh?.layers.mask);
-console.log("RECT0 mask", rectangles[0]?.layers.mask);
+    console.log("CAM mask", camera.layers.mask);
+    console.log("PLANET mask", planet.layers.mask);
+    console.log("ENV mask", atmosphereData.envMesh?.layers.mask);
+    console.log("RECT0 mask", rectangles[0]?.layers.mask);
 
     // Create grass grid
     const grassData = createGrassGrid({
@@ -700,9 +746,15 @@ console.log("RECT0 mask", rectangles[0]?.layers.mask);
     };
 
     // Apply initial weather mode
-    const applyWeatherVisibility = (mode: 'rain' | 'snow' | 'none') => {
+    const applyWeatherVisibility = (mode: 'rain' | 'snow' | 'butterfly' | 'none') => {
       if (weatherRef.current.rain) weatherRef.current.rain.group.visible = (mode === 'rain');
       if (weatherRef.current.snow) weatherRef.current.snow.group.visible = (mode === 'snow');
+      // Les papillons sont gérés séparément via butterflyDataRef
+      if (butterflyDataRef.current) {
+        butterflyDataRef.current.sprites.forEach(sprite => {
+          sprite.visible = (mode === 'butterfly');
+        });
+      }
     };
     applyWeatherVisibility(weatherMode);
 
@@ -729,6 +781,10 @@ console.log("RECT0 mask", rectangles[0]?.layers.mask);
       try {
         const butterflyData = await initializeButterflySystem(scene, 50);
         butterflyDataRef.current = butterflyData;
+        // Désactiver les papillons par défaut
+        butterflyData.sprites.forEach(sprite => {
+          sprite.visible = false;
+        });
       } catch (e) {
         console.warn('Erreur initialisation système papillon:', e);
       }
@@ -948,10 +1004,18 @@ console.log("RECT0 mask", rectangles[0]?.layers.mask);
         />
       </View>
 
+      {isGrassColorMode && (
+        <Pressable
+          style={StyleSheet.absoluteFill}
+          onPress={() => setIsGrassColorMode(false)}
+        />
+      )}
+
       {!isEditMode && (
         <ButtonMenu
           position="top-left"
           gap={12}
+          activeId={motionControlEnabled ? 'motion' : undefined}
           buttons={[
             {
               id: 'orientation',
@@ -972,7 +1036,7 @@ console.log("RECT0 mask", rectangles[0]?.layers.mask);
         />
       )}
 
-      {!isEditMode && (
+      {!isEditMode && !isGrassColorMode && (
         <ButtonEdit
           position="top-right"
           gap={12}
@@ -986,7 +1050,7 @@ console.log("RECT0 mask", rectangles[0]?.layers.mask);
         />
       )}
 
-      {isEditMode && (
+      {isEditMode && !isGrassColorMode && (
         <ButtonEdit
           position="top-right"
           gap={12}
@@ -1003,7 +1067,7 @@ console.log("RECT0 mask", rectangles[0]?.layers.mask);
       {motionControlEnabled && <ResetButton onPress={handleResetView} />}
 
       <Joystick
-        containerStyle={{ right: 50, bottom: 50 }}
+        containerStyle={{ left: 75, bottom: 50 }}
         position={joystickPosition}
         onMove={handleJoystickMove}
         onRelease={handleJoystickRelease}
@@ -1011,7 +1075,7 @@ console.log("RECT0 mask", rectangles[0]?.layers.mask);
 
       {!motionControlEnabled && (
         <Joystick
-          containerStyle={{ left: 75, bottom: 50 }}
+          containerStyle={{ right: 50, bottom: 50 }}
           position={lookJoystickPosition}
           onMove={handleLookJoystickMove}
           onRelease={handleLookJoystickRelease}
@@ -1020,7 +1084,8 @@ console.log("RECT0 mask", rectangles[0]?.layers.mask);
 
 
       {/* Weather toggle */}
-      {isEditMode && (
+      {isEditMode && !isGrassColorMode && (
+
         <View style={styles.editParamsContainer}>
           <ButtonTime
             gap={8}
@@ -1068,6 +1133,7 @@ console.log("RECT0 mask", rectangles[0]?.layers.mask);
               },
             ]}
           />
+
           <ButtonWeather
             gap={8}
             activeId={weatherMode}
@@ -1079,6 +1145,11 @@ console.log("RECT0 mask", rectangles[0]?.layers.mask);
                   setWeatherMode('none');
                   if (weatherRef.current.rain) weatherRef.current.rain.group.visible = false;
                   if (weatherRef.current.snow) weatherRef.current.snow.group.visible = false;
+                  if (butterflyDataRef.current) {
+                    butterflyDataRef.current.sprites.forEach(sprite => {
+                      sprite.visible = false;
+                    });
+                  }
                 },
               },
               {
@@ -1088,6 +1159,11 @@ console.log("RECT0 mask", rectangles[0]?.layers.mask);
                   setWeatherMode('rain');
                   if (weatherRef.current.rain) weatherRef.current.rain.group.visible = true;
                   if (weatherRef.current.snow) weatherRef.current.snow.group.visible = false;
+                  if (butterflyDataRef.current) {
+                    butterflyDataRef.current.sprites.forEach(sprite => {
+                      sprite.visible = false;
+                    });
+                  }
                 },
               },
               {
@@ -1097,6 +1173,25 @@ console.log("RECT0 mask", rectangles[0]?.layers.mask);
                   setWeatherMode('snow');
                   if (weatherRef.current.rain) weatherRef.current.rain.group.visible = false;
                   if (weatherRef.current.snow) weatherRef.current.snow.group.visible = true;
+                  if (butterflyDataRef.current) {
+                    butterflyDataRef.current.sprites.forEach(sprite => {
+                      sprite.visible = false;
+                    });
+                  }
+                },
+              },
+              {
+                id: 'butterfly',
+                Icon: IconButterfly,
+                onPress: () => {
+                  setWeatherMode('butterfly');
+                  if (weatherRef.current.rain) weatherRef.current.rain.group.visible = false;
+                  if (weatherRef.current.snow) weatherRef.current.snow.group.visible = false;
+                  if (butterflyDataRef.current) {
+                    butterflyDataRef.current.sprites.forEach(sprite => {
+                      sprite.visible = true;
+                    });
+                  }
                 },
               },
             ]}
@@ -1114,11 +1209,74 @@ console.log("RECT0 mask", rectangles[0]?.layers.mask);
         </View>
       )}
 
-      {isEditMode && (
-      <ButtonFloor onPress={handleResetView} />
+      {isEditMode && !isGrassColorMode && (
+        <ButtonFloor onPress={() => setIsGrassColorMode(v => !v)} />
       )}
 
-
+      {isGrassColorMode && (
+        <ButtonGrassColor
+          gap={4}
+          activeId={grassColorMode}
+          buttons={[
+            {
+              id: 'yellow_1',
+              color: '#F3D98F',
+              onPress: () => {
+                setGrassColorMode('yellow_1');
+              },
+            },
+            {
+              id: 'orange',
+              color: '#F18C22',
+              onPress: () => {
+                setGrassColorMode('orange');
+              },
+            },
+            {
+              id: 'pink',
+              color: '#E36887',
+              onPress: () => {
+                setGrassColorMode('pink');
+              },
+            },
+            {
+              id: 'blue',
+              color: '#7298C7',
+              onPress: () => {
+                setGrassColorMode('blue');
+              },
+            },
+            {
+              id: 'green_1',
+              color: '#B4B535',
+              onPress: () => {
+                setGrassColorMode('green_1');
+              },
+            },
+            {
+              id: 'green_2',
+              color: '#2B885C',
+              onPress: () => {
+                setGrassColorMode('green_2');
+              },
+            },
+            {
+              id: 'yellow_2',
+              color: '#FAD062',
+              onPress: () => {
+                setGrassColorMode('yellow_2');
+              },
+            },
+            {
+              id: 'red',
+              color: '#F20712',
+              onPress: () => {
+                setGrassColorMode('red');
+              },
+            },
+          ]}
+        />
+      )}
 
       {/* Modal de sélection d'image */}
       <Modal

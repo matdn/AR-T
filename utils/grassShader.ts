@@ -7,11 +7,35 @@ interface GrassShaderOptions {
   windStrength?: number;
 }
 
+export type GrassColorMode =
+  | 'yellow_1'
+  | 'orange'
+  | 'pink'
+  | 'blue'
+  | 'green_1'
+  | 'green_2'
+  | 'yellow_2'
+  | 'red';
+
+const GRASS_COLORS: Record<GrassColorMode, THREE.Vector3> = {
+  yellow_1: new THREE.Vector3(0.953, 0.851, 0.561),
+  orange:   new THREE.Vector3(0.945, 0.549, 0.133),
+  pink:     new THREE.Vector3(0.890, 0.407, 0.529),
+  blue:     new THREE.Vector3(0.447, 0.596, 0.780),
+  green_1:  new THREE.Vector3(0.705, 0.709, 0.207),
+  green_2:  new THREE.Vector3(0.168, 0.533, 0.360),
+  yellow_2: new THREE.Vector3(0.980, 0.815, 0.384),
+  red:      new THREE.Vector3(0.949, 0.027, 0.070),
+};
+
+export const getGrassColorByMode = (mode: GrassColorMode = 'green_1') =>
+  GRASS_COLORS[mode];
+
 export function createGrassShaderMaterial(options: GrassShaderOptions = {}) {
-  const { 
-    sphereCenter = new THREE.Vector3(0, -50, 0), 
+  const {
+    sphereCenter = new THREE.Vector3(0, -50, 0),
     sphereRadius = 50 - 0.1,
-    grassColor = new THREE.Vector3(0.41, 1.0, 0.5),
+    grassColor = new THREE.Vector3(0.705, 0.709, 0.207),
     windStrength = 0.1,
   } = options;
 

@@ -62,6 +62,8 @@ export const createWeatherSystem = (
         map: rainTexture,
         sizeAttenuation: true,
         transparent: true,
+        depthWrite: false,
+
     });
 
     for (let i = 0; i < finalConfig.rainCount; i++) {

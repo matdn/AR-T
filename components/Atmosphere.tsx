@@ -3,7 +3,7 @@ import * as THREE from "three";
 
 export const createEnvironmentMaterial = () => {
   const envTexture = new TextureLoader().load(
-    require("../assets/textures/sky_40_2k.png")
+    require("../assets/textures/lunettes.png")
   );
 
   envTexture.flipY = false;
@@ -18,7 +18,7 @@ export const createEnvironmentMaterial = () => {
   });
 };
 
-export const getLUTTextureByMode = (mode: 'morning' | 'midday' | 'evening' | 'night' = 'evening'): THREE.Texture => {
+export const getLUTTextureByMode = (mode: 'morning' | 'midday' | 'evening' | 'night' = 'midday'): THREE.Texture => {
   const lutPaths: Record<string, any> = {
     morning: require("../assets/textures/lut_morning.png"),
     midday: require("../assets/textures/lut_midday.png"), // Utilise lut_morning_2 pour le midi
@@ -26,7 +26,7 @@ export const getLUTTextureByMode = (mode: 'morning' | 'midday' | 'evening' | 'ni
     night: require("../assets/textures/lut_night.png"),
   };
 
-  const lutTexture = new TextureLoader().load(lutPaths[mode] || lutPaths.evening);
+  const lutTexture = new TextureLoader().load(lutPaths[mode] || lutPaths.midday);
   lutTexture.flipY = false;
   lutTexture.minFilter = THREE.LinearFilter;
   lutTexture.magFilter = THREE.LinearFilter;
@@ -36,7 +36,7 @@ export const getLUTTextureByMode = (mode: 'morning' | 'midday' | 'evening' | 'ni
   return lutTexture;
 };
 
-export const createLUTPostMaterial = (timeMode: 'morning' | 'midday' | 'evening' | 'night' = 'evening') => {
+export const createLUTPostMaterial = (timeMode: 'morning' | 'midday' | 'evening' | 'night' = 'midday') => {
   const lutTexture = getLUTTextureByMode(timeMode);
 
   const lutSize = 64.0;
@@ -126,7 +126,7 @@ export const createAtmosphereMeshes = (
     envRadius = 200,
     enableLUT = true,
     lutIntensity = 0.6,
-    timeMode = 'evening',
+    timeMode = 'midday',
   } = options;
 
   const renderTarget = new THREE.WebGLRenderTarget(width, height, {
