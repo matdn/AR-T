@@ -10,6 +10,7 @@ import * as ScreenOrientation from 'expo-screen-orientation';
 
 import Joystick from "../../components/Joystick";
 import ButtonMenu from "../../components/ButtonMenu";
+import ButtonOption from "../../components/ButtonOption";
 import ButtonEdit from "../../components/ButtonEdit";
 import ButtonTime from "../../components/ButtonTime";
 import ButtonWeather from "../../components/ButtonWeather";
@@ -295,47 +296,47 @@ export default function SceneThree() {
       }
 
       // Sinon, placer un nouveau rectangle
-    const result = placeRectangleOnSurface(
-      raycasterRef.current,
-      cameraRef.current,
-      planetRef.current,
-      x,
-      y,
-      w,
-      h
-    );
+      const result = placeRectangleOnSurface(
+        raycasterRef.current,
+        cameraRef.current,
+        planetRef.current,
+        x,
+        y,
+        w,
+        h
+      );
 
-    if (result && planetRef.current) {
-      const rectangle = createRectangle(result.position, result.normal);
-      rectangle.layers.set(1);
-      // Ajouter les données pour l'animation et l'interaction
-      const rectCount = wallsRef.current.length;
-      rectangle.userData = {
-        basePosition: result.position.clone(),
-        floatOffset: Math.random() * Math.PI * 2,
-        floatSpeed: 0.5 + Math.random() * 0.5,
-        floatAmplitude: 0.1 + Math.random() * 0.15,
-        id: rectCount,
-        message: `Nouveau rectangle ${rectCount + 1}`
-      };
+      if (result && planetRef.current) {
+        const rectangle = createRectangle(result.position, result.normal);
+        rectangle.layers.set(1);
+        // Ajouter les données pour l'animation et l'interaction
+        const rectCount = wallsRef.current.length;
+        rectangle.userData = {
+          basePosition: result.position.clone(),
+          floatOffset: Math.random() * Math.PI * 2,
+          floatSpeed: 0.5 + Math.random() * 0.5,
+          floatAmplitude: 0.1 + Math.random() * 0.15,
+          id: rectCount,
+          message: `Nouveau rectangle ${rectCount + 1}`
+        };
 
-      console.log('Nouveau rectangle créé:', rectangle.userData.message);
+        console.log('Nouveau rectangle créé:', rectangle.userData.message);
 
-      planetRef.current.add(rectangle);
-      wallsRef.current.push(rectangle);
+        planetRef.current.add(rectangle);
+        wallsRef.current.push(rectangle);
 
-      // Créer et attacher un proxy pour ce nouveau rectangle
-      const proxyGeo = new THREE.SphereGeometry(0.9, 12, 12);
-      const proxyMat = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0, depthWrite: false });
-      const proxy = new THREE.Mesh(proxyGeo, proxyMat);
-      proxy.userData = { target: rectangle };
-      proxy.frustumCulled = false;
-      // Décalage léger vers l'extérieur le long de la normale pour réduire les chevauchements
-      const normal = result.normal.clone().normalize();
-      proxy.position.addScaledVector(normal, 0.2);
-      rectangle.add(proxy);
-      hitProxiesRef.current.push(proxy);
-    }
+        // Créer et attacher un proxy pour ce nouveau rectangle
+        const proxyGeo = new THREE.SphereGeometry(0.9, 12, 12);
+        const proxyMat = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0, depthWrite: false });
+        const proxy = new THREE.Mesh(proxyGeo, proxyMat);
+        proxy.userData = { target: rectangle };
+        proxy.frustumCulled = false;
+        // Décalage léger vers l'extérieur le long de la normale pour réduire les chevauchements
+        const normal = result.normal.clone().normalize();
+        proxy.position.addScaledVector(normal, 0.2);
+        rectangle.add(proxy);
+        hitProxiesRef.current.push(proxy);
+      }
     } catch (e) {
       console.error('[handleScreenTap] erreur:', e);
     }
@@ -917,7 +918,7 @@ export default function SceneThree() {
   return (
     <View style={styles.container}>
 
-      {/* <ScreenTutorial></ScreenTutorial> */}
+      <ScreenTutorial></ScreenTutorial>
 
       <View
         style={styles.glView}
@@ -941,58 +942,76 @@ export default function SceneThree() {
         />
       )}
 
-      {!isEditMode && (
-        <ButtonMenu
-          position="top-left"
-          gap={12}
-          activeId={motionControlEnabled ? 'motion' : undefined}
-          buttons={[
-            {
-              id: 'orientation',
-              icon: require('../../assets/images/home.png'),
-              onPress: handleOrientationToggle,
-            },
-            {
-              id: 'grille',
-              icon: require('../../assets/images/grille.png'),
-              onPress: handleResetView,
-            },
-            {
-              id: 'motion',
-              icon: require('../../assets/images/gyro.png'),
-              onPress: () => setMotionControlEnabled(v => !v),
-            },
-          ]}
-        />
-      )}
+      <View style={styles.bottomLeftControls}>
+        {!isEditMode && (
+          <ButtonMenu
+            gap={12}
+            activeId={motionControlEnabled ? 'motion' : undefined}
+            buttons={[
+              {
+                id: 'orientation',
+                icon: require('../../assets/images/home.png'),
+                onPress: handleOrientationToggle,
+              },
+              {
+                id: 'profil',
+                icon: require('../../assets/images/profil.png'),
+                onPress: handleResetView,
+              },
+            ]}
+          />
+        )}
+      </View>
 
-      {!isEditMode && !isGrassColorMode && (
-        <ButtonEdit
-          position="top-right"
-          gap={12}
-          buttons={[
-            {
-              id: 'edit',
-              icon: require('../../assets/images/edit.png'),
-              onPress: () => setIsEditMode(v => !v),
-            },
-          ]}
-        />
-      )}
+      <View style={styles.bottomRightControls}>
 
-      {isEditMode && !isGrassColorMode && (
-        <ButtonEdit
-          position="top-right"
-          gap={12}
-          buttons={[
-            {
-              id: 'edit',
-              icon: require('../../assets/images/no_edit.png'),
-              onPress: () => setIsEditMode(v => !v),
-            },
-          ]}
-        />
-      )}
+        {!isEditMode && (
+          <ButtonOption
+            gap={12}
+            activeId={motionControlEnabled ? 'motion' : undefined}
+            buttons={[
+              {
+                id: 'grille',
+                icon: require('../../assets/images/grille.png'),
+                onPress: handleResetView,
+              },
+              {
+                id: 'motion',
+                icon: require('../../assets/images/gyro.png'),
+                onPress: () => setMotionControlEnabled(v => !v),
+              },
+            ]}
+          />
+        )}
+
+        {!isEditMode && !isGrassColorMode && (
+          <ButtonEdit
+            gap={12}
+            buttons={[
+              {
+                id: 'edit',
+                icon: require('../../assets/images/edit.png'),
+                onPress: () => setIsEditMode(v => !v),
+              },
+            ]}
+          />
+        )}
+
+        {isEditMode && !isGrassColorMode && (
+          <ButtonEdit
+            gap={12}
+            buttons={[
+              {
+                id: 'edit',
+                icon: require('../../assets/images/no_edit.png'),
+                onPress: () => setIsEditMode(v => !v),
+              },
+            ]}
+          />
+        )}
+
+      </View>
+
 
       {motionControlEnabled && <ResetButton onPress={handleResetView} />}
 
@@ -1265,7 +1284,7 @@ const styles = StyleSheet.create({
     left: 0,
     zIndex: 999,
     backgroundColor: 'rgba(179, 184, 194, 0.60)',
-    
+
   },
   glView: {
     flex: 1,
@@ -1314,5 +1333,20 @@ const styles = StyleSheet.create({
     display: 'flex',
     flexDirection: 'row',
     gap: 24,
+  },
+  bottomLeftControls: {
+    position: 'absolute',
+    top: 25,
+    left: 24,
+    display: 'flex',
+    flexDirection: 'row',
+  },
+  bottomRightControls: {
+    position: 'absolute',
+    top: 25,
+    right: 24,
+    display: 'flex',
+    flexDirection: 'row',
+    gap: 12,
   }
 });
