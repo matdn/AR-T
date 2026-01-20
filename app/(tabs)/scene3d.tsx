@@ -1239,7 +1239,7 @@ export default function SceneThree() {
             },
             {
               id: 'pink',
-              color: '#E36887',
+              color: '#F761DE',
               onPress: () => {
                 setGrassColorMode('pink');
               },
@@ -1267,7 +1267,7 @@ export default function SceneThree() {
             },
             {
               id: 'yellow_2',
-              color: '#FAD062',
+              color: '#6859f2',
               onPress: () => {
                 setGrassColorMode('yellow_2');
               },
