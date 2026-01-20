@@ -64,7 +64,7 @@ export default function SceneThree() {
   const animationFrameId = useRef<number | null>(null);
   const rotationRef = useDeviceMotion();
   const [isLandscape, setIsLandscape] = useState(true);
-  const [motionControlEnabled, setMotionControlEnabled] = useState(true);
+  const [motionControlEnabled, setMotionControlEnabled] = useState(false);
 
   const cameraRef = useRef<THREE.PerspectiveCamera | null>(null);
   const cubeRef = useRef<THREE.Mesh | null>(null);
@@ -134,7 +134,7 @@ export default function SceneThree() {
   const [weatherMode, setWeatherMode] = useState<'rain' | 'snow' | 'butterfly' | 'none'>('none');
 
   // Time mode for LUT
-  const [timeMode, setTimeMode] = useState<'morning' | 'midday' | 'evening' | 'night'>('evening');
+  const [timeMode, setTimeMode] = useState<'morning' | 'midday' | 'evening' | 'night'>('midday');
 
   //BUTTERFLY
   const butterflyDataRef = useRef<ButterflyData | null>(null);
