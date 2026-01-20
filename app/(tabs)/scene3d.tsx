@@ -1,7 +1,7 @@
 import { GLView, type ExpoWebGLRenderingContext } from "expo-gl";
 import { Renderer, TextureLoader } from "expo-three";
 import React, { useEffect, useRef, useState } from "react";
-import { StyleSheet, View, GestureResponderEvent, Modal, TouchableOpacity, Text } from "react-native";
+import { StyleSheet, View, GestureResponderEvent, Modal, TouchableOpacity, Text, Pressable } from "react-native";
 import * as ImagePicker from 'expo-image-picker';
 import { Asset } from 'expo-asset';
 import * as ImageManipulator from 'expo-image-manipulator';
@@ -243,6 +243,12 @@ export default function SceneThree() {
   };
 
   const handleScreenTap = (event: GestureResponderEvent) => {
+
+    if (isGrassColorMode) {
+      setIsGrassColorMode(false);
+      return;
+    }
+
     if (!cameraRef.current || !planetRef.current || !raycasterRef.current) return;
 
     const x = event.nativeEvent.locationX;
@@ -998,6 +1004,13 @@ export default function SceneThree() {
         />
       </View>
 
+      {isGrassColorMode && (
+        <Pressable
+          style={StyleSheet.absoluteFill}
+          onPress={() => setIsGrassColorMode(false)}
+        />
+      )}
+
       {!isEditMode && (
         <ButtonMenu
           position="top-left"
@@ -1196,7 +1209,7 @@ export default function SceneThree() {
         </View>
       )}
 
-      {isEditMode && (
+      {isEditMode && !isGrassColorMode && (
         <ButtonFloor onPress={() => setIsGrassColorMode(v => !v)} />
       )}
 
