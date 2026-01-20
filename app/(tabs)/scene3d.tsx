@@ -7,6 +7,7 @@ import { Asset } from 'expo-asset';
 import * as ImageManipulator from 'expo-image-manipulator';
 import * as THREE from "three";
 import * as ScreenOrientation from 'expo-screen-orientation';
+import { BlurView } from 'expo-blur';
 
 import Joystick from "../../components/Joystick";
 import ButtonMenu from "../../components/ButtonMenu";
@@ -22,6 +23,7 @@ import IconButterfly from "../../assets/icons/butterflyclean.svg";
 import IconMorning from "../../assets/icons/morningclean.svg";
 import IconEvening from "../../assets/icons/eveningclean.svg";
 import IconNight from "../../assets/icons/nightclean.svg";
+import ScreenTutorial from "../../components/Tutorial";
 import ResetButton from "../../components/ResetButton";
 import FogControl, { initializeFog, updateFogDensity } from "../../components/FogControl";
 import { useDeviceMotion } from "../../hooks/useDeviceMotion";
@@ -989,6 +991,9 @@ export default function SceneThree() {
 
   return (
     <View style={styles.container}>
+
+      {/* <ScreenTutorial></ScreenTutorial> */}
+
       <View
         style={styles.glView}
         onLayout={(e) => {
@@ -1023,8 +1028,8 @@ export default function SceneThree() {
               onPress: handleOrientationToggle,
             },
             {
-              id: 'reset',
-              icon: require('../../assets/images/recentrer.png'),
+              id: 'grille',
+              icon: require('../../assets/images/grille.png'),
               onPress: handleResetView,
             },
             {
@@ -1326,6 +1331,16 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: "#25292e",
+  },
+  containerBlur: {
+    width: '100%',
+    height: '100%',
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    zIndex: 999,
+    backgroundColor: 'rgba(179, 184, 194, 0.60)',
+    
   },
   glView: {
     flex: 1,
