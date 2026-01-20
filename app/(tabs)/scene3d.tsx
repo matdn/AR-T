@@ -7,7 +7,6 @@ import { Asset } from 'expo-asset';
 import * as ImageManipulator from 'expo-image-manipulator';
 import * as THREE from "three";
 import * as ScreenOrientation from 'expo-screen-orientation';
-import { BlurView } from 'expo-blur';
 
 import Joystick from "../../components/Joystick";
 import ButtonMenu from "../../components/ButtonMenu";
@@ -247,7 +246,6 @@ export default function SceneThree() {
   };
 
   const handleScreenTap = (event: GestureResponderEvent) => {
-<<<<<<< Updated upstream
 
     if (isGrassColorMode) {
       setIsGrassColorMode(false);
@@ -255,10 +253,8 @@ export default function SceneThree() {
     }
 
     if (!cameraRef.current || !planetRef.current || !raycasterRef.current) return;
-=======
     try {
       if (!cameraRef.current || !planetRef.current || !raycasterRef.current) return;
->>>>>>> Stashed changes
 
       const x = event.nativeEvent.locationX;
       const y = event.nativeEvent.locationY;
@@ -586,25 +582,6 @@ export default function SceneThree() {
     wallsRef.current = rectangles;
     hitProxiesRef.current = proxies;
 
-<<<<<<< Updated upstream
-    // Create atmosphere (remplace le sky sphere)
-    const atmosphereData = createAtmosphereMeshes(scene, width, height, {
-      planetPosition: new THREE.Vector3(0, -50, 0),
-      envRadius: 100,
-      enableLUT: true,
-      lutIntensity: 1,
-      timeMode: timeMode,
-    });
-    // S'assurer que l'atmosphère est rendue en premier
-    if (atmosphereData.envMesh) {
-      atmosphereData.envMesh.renderOrder = 0;
-    }
-    atmosphereDataRef.current = atmosphereData;
-    console.log("CAM mask", camera.layers.mask);
-    console.log("PLANET mask", planet.layers.mask);
-    console.log("ENV mask", atmosphereData.envMesh?.layers.mask);
-    console.log("RECT0 mask", rectangles[0]?.layers.mask);
-=======
     // Remplacer la LUT par un HDRI (background + lighting)
     atmosphereDataRef.current = null;
     (async () => {
@@ -649,7 +626,6 @@ export default function SceneThree() {
         console.warn('[HDRI] Échec chargement HDRI:', e);
       }
     })();
->>>>>>> Stashed changes
 
     // Create grass grid
     const grassData = createGrassGrid({
