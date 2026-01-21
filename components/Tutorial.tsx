@@ -13,25 +13,26 @@ import IconNight from "./../assets/icons/nightclean.svg";
 import ButtonFloor from "./../components/ButtonFloor";
 import FogControl, { initializeFog, updateFogDensity } from "./../components/FogControl";
 
-interface ScreenTutorialProps {
+interface ScreenTutorialGalerieProps {
   onPress?: () => void;
-  onTutorialEdit?: () => void;
-  onTutorialComplete?: () => void;
+  onTutorialGalerieComplete?: () => void;
 }
 
-export default function ScreenTutorial({ onPress, onTutorialEdit, onTutorialComplete }: ScreenTutorialProps) {
+interface ScreenTutorialEditProps {
+  onPress?: () => void;
+  onTutorialEditComplete?: () => void;
+}
+
+export function ScreenTutorialGalerie({ onPress, onTutorialGalerieComplete }: ScreenTutorialGalerieProps) {
   const [step, setStep] = useState(0);
 
   const nextStep = () => {
     setStep((s) => {
-      const max = 10;
+      const max = 6;
       if (s >= max) {
         onPress?.();
-        onTutorialComplete?.();
+        onTutorialGalerieComplete?.();
         return s;
-      }
-      if (s === 6) {
-        onTutorialEdit?.();
       }
       return s + 1;
     });
@@ -236,8 +237,47 @@ export default function ScreenTutorial({ onPress, onTutorialEdit, onTutorialComp
           </View>
         )}
 
-        {/* Étape 8 */}
-        {step === 7 && (
+      </BlurView>
+      <View style={styles.wall}>
+      </View>
+
+    </View>
+  );
+}
+
+export function ScreenTutorialEdit({ onPress, onTutorialEditComplete }: ScreenTutorialEditProps) {
+  const [step, setStep] = useState(0);
+
+  const nextStep = () => {
+    setStep((s) => {
+      const max = 3;
+      if (s >= max) {
+        onPress?.();
+        onTutorialEditComplete?.();
+        return s;
+      }
+      return s + 1;
+    });
+  };
+
+  return (
+    <View style={styles.container}>
+      <BlurView intensity={10} style={styles.containerBlur}>
+        {/* Arrow toujours visible + cliquable */}
+        <TouchableOpacity
+          activeOpacity={0.9}
+          onPress={nextStep}
+          style={styles.containerArrow}
+        >
+          <Image
+            style={styles.arrow}
+            source={require('./../assets/icons/arrow2.png')}
+          />
+
+        </TouchableOpacity>
+
+        {/* Étape 1 */}
+        {step === 0 && (
           <View style={[styles.containerTuto, { left: 25, top: 24 }]}>
             <ButtonTime
               gap={8}
@@ -264,7 +304,7 @@ export default function ScreenTutorial({ onPress, onTutorialEdit, onTutorialComp
           </View>
         )}
 
-        {step === 7 && (
+        {step === 0 && (
           <View style={[styles.containerTuto, { top: 45, left: 145 }]}>
             <View style={styles.cercleTuto}>
               <View style={styles.cercle}>
@@ -274,8 +314,8 @@ export default function ScreenTutorial({ onPress, onTutorialEdit, onTutorialComp
           </View>
         )}
 
-        {/* Étape 9 */}
-        {step === 8 && (
+        {/* Étape 2 */}
+        {step === 1 && (
           <View style={[styles.containerTuto, { left: 189, top: 24 }]}>
             <ButtonWeather
               gap={8}
@@ -302,7 +342,7 @@ export default function ScreenTutorial({ onPress, onTutorialEdit, onTutorialComp
           </View>
         )}
 
-        {step === 8 && (
+        {step === 1 && (
           <View style={[styles.containerTuto, { top: 45, left: 275 }]}>
             <View style={styles.cercleTuto}>
               <View style={styles.cercle}>
@@ -312,8 +352,8 @@ export default function ScreenTutorial({ onPress, onTutorialEdit, onTutorialComp
           </View>
         )}
 
-        {/* Étape 10 */}
-        {step === 9 && (
+        {/* Étape 3 */}
+        {step === 2 && (
           <View style={[styles.containerTuto, { left: 354, top: 24 }]}>
             <FogControl
               minValue={0}
@@ -323,7 +363,7 @@ export default function ScreenTutorial({ onPress, onTutorialEdit, onTutorialComp
           </View>
         )}
 
-        {step === 9 && (
+        {step === 2 && (
           <View style={[styles.containerTuto, { top: 45, left: 510 }]}>
             <View style={styles.cercleTuto}>
               <View style={styles.cercle}>
@@ -333,8 +373,8 @@ export default function ScreenTutorial({ onPress, onTutorialEdit, onTutorialComp
           </View>
         )}
 
-        {/* Étape 11 */}
-        {step === 10 && (
+        {/* Étape 4 */}
+        {step === 3 && (
           <View>
             <TouchableOpacity style={styles.buttonEdit}>
               <Image
@@ -345,7 +385,7 @@ export default function ScreenTutorial({ onPress, onTutorialEdit, onTutorialComp
           </View>
         )}
 
-        {step === 10 && (
+        {step === 3 && (
           <View style={[styles.containerTuto, { top: 52, right: 45 }]}>
             <Text style={styles.tutoTexte}>Mode galerie</Text>
             <View style={styles.cercleTuto}>
@@ -356,46 +396,6 @@ export default function ScreenTutorial({ onPress, onTutorialEdit, onTutorialComp
         )}
 
       </BlurView>
-      <View style={styles.wall}>
-      </View>
-
-      {step >= 7 && (
-
-        <View style={[styles.containerTuto, { left: 189, top: 24 }]}>
-          <ButtonWeather
-            gap={8}
-            buttons={[
-              {
-                id: 'none',
-                Icon: IconNone,
-                selected: true,
-              },
-              {
-                id: 'rain',
-                Icon: IconRain,
-              },
-              {
-                id: 'snow',
-                Icon: IconSnow,
-              },
-              {
-                id: 'butterfly',
-                Icon: IconButterfly,
-              },
-            ]}
-          />
-        </View>
-      )}
-
-      {step >= 7 && (
-        <View style={[styles.containerTuto, { left: 354, top: 24 }]}>
-          <FogControl
-            minValue={0}
-            maxValue={0.3}
-            step={0.01}
-          />
-        </View>
-      )}
 
     </View>
   );

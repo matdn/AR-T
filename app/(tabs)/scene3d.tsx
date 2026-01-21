@@ -23,7 +23,7 @@ import IconButterfly from "../../assets/icons/butterflyclean.svg";
 import IconMorning from "../../assets/icons/morningclean.svg";
 import IconEvening from "../../assets/icons/eveningclean.svg";
 import IconNight from "../../assets/icons/nightclean.svg";
-import ScreenTutorial from "../../components/Tutorial";
+import { ScreenTutorialGalerie, ScreenTutorialEdit } from "../../components/Tutorial";
 import ResetButton from "../../components/ResetButton";
 import FogControl, { initializeFog, updateFogDensity } from "../../components/FogControl";
 import { useDeviceMotion } from "../../hooks/useDeviceMotion";
@@ -157,7 +157,8 @@ export default function SceneThree() {
   const [isEditMode, setIsEditMode] = useState(false);
 
   // Tutorial state
-  const [tutorialCompleted, setTutorialCompleted] = useState(false);
+  const [tutorialGalerieCompleted, setTutorialGalerieCompleted] = useState(false);
+  const [tutorialEditCompleted, setTutorialEditCompleted] = useState(false);
 
   // Grass Color mode state
   const [isGrassColorMode, setIsGrassColorMode] = useState(false);
@@ -977,12 +978,18 @@ export default function SceneThree() {
   return (
     <View style={styles.container}>
 
-      {!tutorialCompleted && (
-        <ScreenTutorial
-          onTutorialEdit={() => setIsEditMode(true)}
-          onTutorialComplete={() => {
-            setTutorialCompleted(true);
-            setIsEditMode(false);
+      {!tutorialGalerieCompleted && (
+        <ScreenTutorialGalerie
+          onTutorialGalerieComplete={() => {
+            setTutorialGalerieCompleted(true);
+          }}
+        />
+      )}
+
+      {isEditMode && !tutorialEditCompleted && (
+        <ScreenTutorialEdit
+          onTutorialEditComplete={() => {
+            setTutorialEditCompleted(true);
           }}
         />
       )}
