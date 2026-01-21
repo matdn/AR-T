@@ -155,6 +155,9 @@ export default function SceneThree() {
   // Edit mode state
   const [isEditMode, setIsEditMode] = useState(false);
 
+  // Tutorial state
+  const [tutorialCompleted, setTutorialCompleted] = useState(false);
+
   // Grass Color mode state
   const [isGrassColorMode, setIsGrassColorMode] = useState(false);
 
@@ -918,7 +921,15 @@ export default function SceneThree() {
   return (
     <View style={styles.container}>
 
-      <ScreenTutorial></ScreenTutorial>
+      {!tutorialCompleted && (
+        <ScreenTutorial 
+          onTutorialEdit={() => setIsEditMode(true)} 
+          onTutorialComplete={() => {
+            setTutorialCompleted(true);
+            setIsEditMode(false);
+          }}
+        />
+      )}
 
       <View
         style={styles.glView}

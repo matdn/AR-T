@@ -2,7 +2,7 @@ import React from 'react';
 import { View, TouchableOpacity, StyleSheet, Text } from 'react-native';
 
 interface ButtonFloorProps {
-  onPress: () => void;
+  onPress?: () => void;
 }
 
 export default function ResetButton({ onPress }: ButtonFloorProps) {

@@ -4,8 +4,8 @@ import Slider from '@react-native-community/slider';
 import * as THREE from 'three';
 
 interface FogControlProps {
-  fogDensity: number;
-  onFogDensityChange: (value: number) => void;
+  fogDensity?: number;
+  onFogDensityChange?: (value: number) => void;
   minValue?: number;
   maxValue?: number;
   step?: number;
