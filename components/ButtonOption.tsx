@@ -12,7 +12,7 @@ interface ButtonOptionProps {
   buttons: ButtonItem[];
   gap?: number;
   containerStyle?: ViewStyle;
-  activeId?: string;
+  activeId?: string | string[];
 }
 
 export default function ButtonOption({
@@ -36,7 +36,7 @@ export default function ButtonOption({
       ]}
     >
       {buttons.map((button) => {
-        const isActive = button.id === activeId;
+        const isActive = Array.isArray(activeId) ? activeId.includes(button.id) : button.id === activeId;
         return (
         <TouchableOpacity
           key={button.id}

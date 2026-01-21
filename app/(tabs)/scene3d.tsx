@@ -35,7 +35,8 @@ import {
   createRandomRectangles,
   createRectangle,
   createGrassGrid,
-  createInnerAtmosphere
+  createInnerAtmosphere,
+  createGridFloor,
 } from "../../utils/sceneObjects";
 import {
   rotatePlanetWithCamera,
@@ -66,6 +67,7 @@ export default function SceneThree() {
   const rotationRef = useDeviceMotion();
   const [isLandscape, setIsLandscape] = useState(true);
   const [motionControlEnabled, setMotionControlEnabled] = useState(false);
+  const [grilleEnabled, setGrilleEnabled] = useState(false);
 
   const cameraRef = useRef<THREE.PerspectiveCamera | null>(null);
   const cubeRef = useRef<THREE.Mesh | null>(null);
@@ -102,6 +104,8 @@ export default function SceneThree() {
 
   const atmosphereDataRef = useRef<AtmosphereRenderData | null>(null);
   const innerAtmosphereRef = useRef<THREE.Group | null>(null);
+  const gridFloorRef = useRef<THREE.Group | null>(null);
+  const grilleEnabledRef = useRef(false);
 
   // HDRI (remplace la LUT): background + environment
   const hdriTextureRef = useRef<THREE.Texture | null>(null);
@@ -499,6 +503,13 @@ export default function SceneThree() {
   }, [motionControlEnabled]);
 
   useEffect(() => {
+    grilleEnabledRef.current = grilleEnabled;
+    if (gridFloorRef.current) {
+      gridFloorRef.current.visible = grilleEnabled;
+    }
+  }, [grilleEnabled]);
+
+  useEffect(() => {
     const v = getGrassColorByMode(grassColorMode);
 
     // --- GRASS SHADER ---
@@ -651,6 +662,12 @@ export default function SceneThree() {
     innerAtmo.renderOrder = 2; // Rendre par dessus la planète
     scene.add(innerAtmo);
     innerAtmosphereRef.current = innerAtmo;
+
+    const gridFloor = createGridFloor();
+    gridFloor.renderOrder = 2; // Rendre par dessus la planète
+    gridFloor.visible = false; // Masqué par défaut
+    scene.add(gridFloor);
+    gridFloorRef.current = gridFloor;
 
     // Create random rectangles + proxies pour améliorer le hit au toucher
     const rectangles = createRandomRectangles(20);
@@ -836,6 +853,10 @@ export default function SceneThree() {
         innerAtmosphereRef.current.rotation.x += 0.0005;
       }
 
+      // if (gridFloorRef.current) {
+      //   gridFloorRef.current.rotation.x += 0.0005;
+      // }
+
       // Update grass shader time
       if (grassMaterialRef.current && sceneRef.current) {
         updateGrassTime(grassMaterialRef.current, clockRef.current.getElapsedTime());
@@ -878,6 +899,11 @@ export default function SceneThree() {
         if (hasCollision) {
           planetRef.current.rotation.x = currentRotationX;
           planetRef.current.rotation.y = currentRotationY;
+        }
+
+        // Make gridFloor follow planet rotation
+        if (gridFloorRef.current) {
+          gridFloorRef.current.rotation.copy(planetRef.current.rotation);
         }
       }
 
@@ -1042,12 +1068,15 @@ export default function SceneThree() {
         {!isEditMode && (
           <ButtonOption
             gap={12}
-            activeId={motionControlEnabled ? 'motion' : undefined}
+            activeId={[
+              ...(grilleEnabled ? ['grille'] : []),
+              ...(motionControlEnabled ? ['motion'] : []),
+            ]}
             buttons={[
               {
                 id: 'grille',
                 icon: require('../../assets/images/grille.png'),
-                onPress: handleResetView,
+                onPress: () => setGrilleEnabled(v => !v),
               },
               {
                 id: 'motion',

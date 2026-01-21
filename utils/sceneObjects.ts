@@ -344,3 +344,57 @@ export function createInnerAtmosphere(): THREE.Group {
   
   return gridGroup;
 }
+
+export function createGridFloor(): THREE.Group {
+  const radius = 50.5; 
+  const gridGroup = new THREE.Group();
+  
+  const material = new THREE.LineBasicMaterial({
+    color: 0xffffff,
+    transparent: true,
+    opacity: 0.5,
+    depthWrite: false,
+    linewidth: 3 
+  });
+  
+  const latSegments = 60;
+  const lonSegments = 60; 
+  
+  for (let i = 0; i <= latSegments; i++) {
+    const phi = (Math.PI * i) / latSegments;
+    const points = [];
+    
+    for (let j = 0; j <= 64; j++) {
+      const theta = (2 * Math.PI * j) / 64;
+      const x = radius * Math.sin(phi) * Math.cos(theta);
+      const y = radius * Math.cos(phi);
+      const z = radius * Math.sin(phi) * Math.sin(theta);
+      points.push(new THREE.Vector3(x, y, z));
+    }
+    
+    const geometry = new THREE.BufferGeometry().setFromPoints(points);
+    const line = new THREE.Line(geometry, material);
+    gridGroup.add(line);
+  }
+  
+  for (let i = 0; i < lonSegments; i++) {
+    const theta = (2 * Math.PI * i) / lonSegments;
+    const points = [];
+    
+    for (let j = 0; j <= 64; j++) {
+      const phi = (Math.PI * j) / 64;
+      const x = radius * Math.sin(phi) * Math.cos(theta);
+      const y = radius * Math.cos(phi);
+      const z = radius * Math.sin(phi) * Math.sin(theta);
+      points.push(new THREE.Vector3(x, y, z));
+    }
+    
+    const geometry = new THREE.BufferGeometry().setFromPoints(points);
+    const line = new THREE.Line(geometry, material);
+    gridGroup.add(line);
+  }
+  
+  gridGroup.position.set(0, -50, 0);
+  
+  return gridGroup;
+}
