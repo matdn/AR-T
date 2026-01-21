@@ -262,9 +262,9 @@ export default function SceneThree() {
 
     try {
       const skyByMode: Record<typeof mode, any> = {
-        morning: require('../../assets/textures/envMapMatin.png'),
+        morning: require('../../assets/textures/envMapNuitV2.png'),
         midday: require('../../assets/textures/envMapMidday.png'),
-        evening: require('../../assets/textures/envMapSoir.png'),
+        evening: require('../../assets/textures/envMapNuitV2.png'),
         night: require('../../assets/textures/envMapNuitV2.png'),
       };
 
