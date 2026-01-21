@@ -8,7 +8,7 @@ const getEnvMapModuleByMode = (mode: TimeMode) => {
     morning: require("../assets/textures/envMapMatin.png"),
     midday: require("../assets/textures/envMapMidday.png"),
     evening: require("../assets/textures/envMapSoir.png"),
-    night: require("../assets/textures/sky_402_2k.png"),
+    night: require("../assets/textures/envMapNuitV2.png"),
   };
   return envPaths[mode] ?? envPaths.midday;
 };
@@ -60,10 +60,10 @@ export const updateEnvironmentMaterial = (
 
 export const getLUTTextureByMode = (mode: 'morning' | 'midday' | 'evening' | 'night' = 'midday'): THREE.Texture => {
   const lutPaths: Record<string, any> = {
-    morning: require("../assets/textures/lut_morning.png"),
+    morning: require("../assets/textures/lut_midday.png"),
     midday: require("../assets/textures/lut_midday.png"), // Utilise lut_morning_2 pour le midi
-    evening: require("../assets/textures/lut_sunset.png"),
-    night: require("../assets/textures/lut_night.png"),
+    evening: require("../assets/textures/lut_midday.png"),
+    night: require("../assets/textures/lut_midday.png"),
   };
 
   const lutTexture = new TextureLoader().load(lutPaths[mode] || lutPaths.midday);

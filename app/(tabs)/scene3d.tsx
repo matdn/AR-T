@@ -146,8 +146,8 @@ export default function SceneThree() {
   const butterflyDataRef = useRef<ButterflyData | null>(null);
 
   // Fog control
-  const [fogDensity, setFogDensity] = useState(0.01);
-  const fogDensityRef = useRef(0.01);
+  const [fogDensity, setFogDensity] = useState(0);
+  const fogDensityRef = useRef(0);
 
   // Image picker state
   const [pickerVisible, setPickerVisible] = useState(false);
@@ -265,7 +265,7 @@ export default function SceneThree() {
         morning: require('../../assets/textures/envMapMatin.png'),
         midday: require('../../assets/textures/envMapMidday.png'),
         evening: require('../../assets/textures/envMapSoir.png'),
-        night: require('../../assets/textures/sky_402_2k.png'),
+        night: require('../../assets/textures/envMapNuitV2.png'),
       };
 
       const skyModule = skyByMode[mode];
@@ -473,6 +473,16 @@ export default function SceneThree() {
       // ⚠️ importe updateEnvironmentMaterial depuis Atmosphere.tsx
       updateEnvironmentMaterial(mat, timeMode);
     }
+
+    // Change grass color based on time mode
+    const grassColorMap: Record<typeof timeMode, GrassColorMode> = {
+      morning: 'orange',
+      midday: 'green_1',
+      evening: 'pink',
+      night: 'yellow_2',
+    };
+
+    setGrassColorMode(grassColorMap[timeMode]);
   }, [timeMode]);
 
 
@@ -668,8 +678,8 @@ export default function SceneThree() {
     const atmosphereData = createAtmosphereMeshes(scene, width, height, {
       planetPosition: new THREE.Vector3(0, -50, 0),
       envRadius: 100,
-      enableLUT: false,
-      lutIntensity: 0,
+      enableLUT: true,
+      lutIntensity: 1,
       timeMode: timeMode,
     });
 
@@ -1208,7 +1218,7 @@ export default function SceneThree() {
             fogDensity={fogDensity}
             onFogDensityChange={handleFogDensityChange}
             minValue={0}
-            maxValue={0.3}
+            maxValue={0.15}
             step={0.01}
           />
 
@@ -1240,7 +1250,7 @@ export default function SceneThree() {
             },
             {
               id: 'pink',
-              color: '#E36887',
+              color: '#F761DE',
               onPress: () => {
                 setGrassColorMode('pink');
               },
@@ -1268,7 +1278,7 @@ export default function SceneThree() {
             },
             {
               id: 'yellow_2',
-              color: '#FAD062',
+              color: '#6859f2',
               onPress: () => {
                 setGrassColorMode('yellow_2');
               },

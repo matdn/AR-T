@@ -14,7 +14,7 @@ interface FogControlProps {
 // Fonction pour initialiser le fog dans une scène Three.js
 export function initializeFog(
   scene: THREE.Scene,
-  density: number = 0.1,
+  density: number = 0,
   color: number = 0xFFFFFF
 ): THREE.FogExp2 {
   const fog = new THREE.FogExp2(color, density);
