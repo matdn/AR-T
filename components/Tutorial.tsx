@@ -204,19 +204,19 @@ export function ScreenTutorialGalerie({ onPress, onTutorialGalerieComplete }: Sc
         )}
 
         {step === 5 && (
-          <View>
+          <View style={[styles.containerTuto, { bottom: 92, right: 165 }]}>
             <Image
-              style={[styles.line, { top: 182, right: 162, width: 200, height: 100 }]}
-              source={require('./../assets/images/line2.png')}
+              style={{width: 200, height: 1 }}
+              source={require('./../assets/images/line.png')}
             />
           </View>
         )}
 
         {step === 5 && (
-          <View>
+          <View style={[styles.containerTuto, { bottom: 92, left: 165 }]}>
             <Image
-              style={[styles.line, { top: 182, left: 164, width: 200, height: 100 }]}
-              source={require('./../assets/images/line2.png')}
+              style={{width: 200, height: 1 }}
+              source={require('./../assets/images/line.png')}
             />
           </View>
         )}
@@ -435,7 +435,6 @@ const styles = StyleSheet.create({
     display: 'flex',
     justifyContent: 'center',
     alignItems: 'center',
-    // important: pour capter le clic sur toute la zone
     zIndex: 1000,
   },
   containerTuto: {
