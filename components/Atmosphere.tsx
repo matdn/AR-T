@@ -3,7 +3,7 @@ import * as THREE from "three";
 
 export const createEnvironmentMaterial = () => {
   const envTexture = new TextureLoader().load(
-    require("../assets/textures/lunettes.png")
+    require("../assets/textures/envMapMidday.png")
   );
 
   envTexture.flipY = false;

@@ -50,6 +50,7 @@ import {
   type AtmosphereRenderData
 } from "../../utils/atmosphereHelpers";
 import {
+  createAtmosphereMeshes,
   updateAtmosphereLUT,
 } from "@/components/Atmosphere";
 import { createWeatherSystem } from "@/components/Weather";
@@ -586,14 +587,22 @@ export default function SceneThree() {
     wallsRef.current = rectangles;
     hitProxiesRef.current = proxies;
 
+    const atmosphereData = createAtmosphereMeshes(scene, width, height, {
+      planetPosition: new THREE.Vector3(0, -50, 0),
+      envRadius: 100,
+      enableLUT: true,
+      lutIntensity: 1,
+      timeMode: timeMode,
+    });
+
     // Remplacer la LUT par un HDRI (background + lighting)
     atmosphereDataRef.current = null;
     (async () => {
       try {
         const skyByMode: Record<string, any> = {
-          morning: require('../../assets/textures/sky_16_2k.png'),
-          midday: require('../../assets/textures/sky_17_2k.png'),
-          evening: require('../../assets/textures/sky_40_2k.png'),
+          morning: require('../../assets/textures/envMapMatin.png'),
+          midday: require('../../assets/textures/envMapMidday.png'),
+          evening: require('../../assets/textures/envMapSoir.png'),
           night: require('../../assets/textures/sky_402_2k.png'),
         };
 
