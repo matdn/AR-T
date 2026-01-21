@@ -51,7 +51,7 @@ import {
 } from "../../utils/atmosphereHelpers";
 import {
   createAtmosphereMeshes,
-  updateAtmosphereLUT,
+  updateAtmosphereLUT, updateEnvironmentMaterial
 } from "@/components/Atmosphere";
 import { createWeatherSystem } from "@/components/Weather";
 import {
@@ -250,6 +250,71 @@ export default function SceneThree() {
     }
   };
 
+  const hdriLoadTokenRef = useRef(0);
+
+  const loadHdriForMode = async (mode: 'morning' | 'midday' | 'evening' | 'night') => {
+    const scene = sceneRef.current;
+    const renderer = rendererRef.current;
+
+    if (!scene || !renderer) return;
+
+    const token = ++hdriLoadTokenRef.current;
+
+    try {
+      const skyByMode: Record<typeof mode, any> = {
+        morning: require('../../assets/textures/envMapMatin.png'),
+        midday: require('../../assets/textures/envMapMidday.png'),
+        evening: require('../../assets/textures/envMapSoir.png'),
+        night: require('../../assets/textures/sky_402_2k.png'),
+      };
+
+      const skyModule = skyByMode[mode];
+      const skyAsset = Asset.fromModule(skyModule);
+      await skyAsset.downloadAsync();
+      const skyUri = skyAsset.localUri ?? skyAsset.uri;
+
+      // Si un autre clic a lancé un nouveau chargement entre temps, on annule celui-ci
+      if (token !== hdriLoadTokenRef.current) return;
+
+      const skyTexture = await new TextureLoader().loadAsync(skyUri);
+
+      // (re-check token après chargement texture)
+      if (token !== hdriLoadTokenRef.current) {
+        try { skyTexture.dispose(); } catch { }
+        return;
+      }
+
+      skyTexture.mapping = THREE.EquirectangularReflectionMapping;
+      skyTexture.wrapS = THREE.ClampToEdgeWrapping;
+      skyTexture.wrapT = THREE.ClampToEdgeWrapping;
+      skyTexture.minFilter = THREE.LinearFilter;
+      skyTexture.magFilter = THREE.LinearFilter;
+      skyTexture.generateMipmaps = false;
+      skyTexture.flipY = false;
+
+      // cleanup ancien HDRI
+      try { hdriEnvRTRef.current?.dispose?.(); } catch { }
+      try { pmremGenRef.current?.dispose?.(); } catch { }
+      try { hdriTextureRef.current?.dispose?.(); } catch { }
+
+      // ⚠️ PMREMGenerator veut un WebGLRenderer.
+      // expo-three Renderer est compatible côté runtime, donc ça marche souvent avec "as any".
+      const pmrem = new THREE.PMREMGenerator(renderer as any);
+      pmrem.compileEquirectangularShader();
+      const envRT = pmrem.fromEquirectangular(skyTexture);
+
+      hdriTextureRef.current = skyTexture;
+      pmremGenRef.current = pmrem;
+      hdriEnvRTRef.current = envRT;
+
+      scene.background = null;
+      scene.environment = envRT.texture;
+    } catch (e) {
+      console.warn('[HDRI] Échec chargement HDRI:', e);
+    }
+  };
+
+
   const handleScreenTap = (event: GestureResponderEvent) => {
 
     if (isGrassColorMode) {
@@ -398,6 +463,19 @@ export default function SceneThree() {
     // Mettre à jour le fog de la scène en temps réel via la fonction du composant
     updateFogDensity(sceneRef.current, value);
   };
+
+  useEffect(() => {
+    loadHdriForMode(timeMode);
+
+    const envMesh = atmosphereDataRef.current?.envMesh;
+    if (envMesh) {
+      const mat = envMesh.material as THREE.MeshBasicMaterial;
+      // ⚠️ importe updateEnvironmentMaterial depuis Atmosphere.tsx
+      updateEnvironmentMaterial(mat, timeMode);
+    }
+  }, [timeMode]);
+
+
 
   useEffect(() => {
     ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.LANDSCAPE_RIGHT);
@@ -590,55 +668,14 @@ export default function SceneThree() {
     const atmosphereData = createAtmosphereMeshes(scene, width, height, {
       planetPosition: new THREE.Vector3(0, -50, 0),
       envRadius: 100,
-      enableLUT: true,
-      lutIntensity: 1,
+      enableLUT: false,
+      lutIntensity: 0,
       timeMode: timeMode,
     });
 
     // Remplacer la LUT par un HDRI (background + lighting)
-    atmosphereDataRef.current = null;
-    (async () => {
-      try {
-        const skyByMode: Record<string, any> = {
-          morning: require('../../assets/textures/envMapMatin.png'),
-          midday: require('../../assets/textures/envMapMidday.png'),
-          evening: require('../../assets/textures/envMapSoir.png'),
-          night: require('../../assets/textures/sky_402_2k.png'),
-        };
-
-        const skyModule = skyByMode[timeMode] ?? skyByMode.evening;
-        const skyAsset = Asset.fromModule(skyModule);
-        await skyAsset.downloadAsync();
-        const skyUri = skyAsset.localUri ?? skyAsset.uri;
-
-        const skyTexture = await new TextureLoader().loadAsync(skyUri);
-        skyTexture.mapping = THREE.EquirectangularReflectionMapping;
-        skyTexture.wrapS = THREE.ClampToEdgeWrapping;
-        skyTexture.wrapT = THREE.ClampToEdgeWrapping;
-        skyTexture.minFilter = THREE.LinearFilter;
-        skyTexture.magFilter = THREE.LinearFilter;
-        skyTexture.generateMipmaps = false;
-        skyTexture.flipY = false;
-
-        // Nettoyage de l'ancien HDRI si existant
-        try { hdriEnvRTRef.current?.dispose?.(); } catch { }
-        try { pmremGenRef.current?.dispose?.(); } catch { }
-        try { hdriTextureRef.current?.dispose?.(); } catch { }
-
-        const pmrem = new THREE.PMREMGenerator(renderer as any);
-        pmrem.compileEquirectangularShader();
-        const envRT = pmrem.fromEquirectangular(skyTexture);
-
-        hdriTextureRef.current = skyTexture;
-        pmremGenRef.current = pmrem;
-        hdriEnvRTRef.current = envRT;
-
-        scene.background = skyTexture;
-        scene.environment = envRT.texture;
-      } catch (e) {
-        console.warn('[HDRI] Échec chargement HDRI:', e);
-      }
-    })();
+    atmosphereDataRef.current = atmosphereData;
+    loadHdriForMode(timeMode);
 
     // Create grass grid
     const grassData = createGrassGrid({
@@ -671,7 +708,7 @@ export default function SceneThree() {
       spreadY: 20,
       minY: 8,
       maxY: 15,
-      fallSpeed: 1.5,
+      fallSpeed: 0.5,
       resetThreshold: -2,
       type: 'snow',
     });
@@ -931,8 +968,8 @@ export default function SceneThree() {
     <View style={styles.container}>
 
       {!tutorialCompleted && (
-        <ScreenTutorial 
-          onTutorialEdit={() => setIsEditMode(true)} 
+        <ScreenTutorial
+          onTutorialEdit={() => setIsEditMode(true)}
           onTutorialComplete={() => {
             setTutorialCompleted(true);
             setIsEditMode(false);
