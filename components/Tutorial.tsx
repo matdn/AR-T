@@ -24,7 +24,7 @@ export default function ScreenTutorial({ onPress, onTutorialEdit, onTutorialComp
 
   const nextStep = () => {
     setStep((s) => {
-      const max = 11;
+      const max = 10;
       if (s >= max) {
         onPress?.();
         onTutorialComplete?.();
@@ -71,7 +71,7 @@ export default function ScreenTutorial({ onPress, onTutorialEdit, onTutorialComp
               <View style={styles.cercle}>
               </View>
             </View>
-            <Text style={styles.tutoTexte}>Retour à l'acceuil</Text>
+            <Text style={styles.tutoTexte}>Acceuil</Text>
           </View>
         )}
 
@@ -93,7 +93,7 @@ export default function ScreenTutorial({ onPress, onTutorialEdit, onTutorialComp
               <View style={styles.cercle}>
               </View>
             </View>
-            <Text style={styles.tutoTexte}>Remplissez votre fiche Artiste</Text>
+            <Text style={styles.tutoTexte}>Fiche artiste</Text>
           </View>
         )}
 
@@ -111,7 +111,7 @@ export default function ScreenTutorial({ onPress, onTutorialEdit, onTutorialComp
 
         {step === 2 && (
           <View style={[styles.containerTuto, { top: 58, right: 155 }]}>
-            <Text style={styles.tutoTexte}>Affichage grille</Text>
+            <Text style={styles.tutoTexte}>Grille</Text>
             <View style={styles.cercleTuto}>
               <View style={styles.cercle}>
               </View>
@@ -347,23 +347,12 @@ export default function ScreenTutorial({ onPress, onTutorialEdit, onTutorialComp
 
         {step === 10 && (
           <View style={[styles.containerTuto, { top: 52, right: 45 }]}>
-            <Text style={styles.tutoTexte}>Reviens à la galerie</Text>
+            <Text style={styles.tutoTexte}>Mode galerie</Text>
             <View style={styles.cercleTuto}>
               <View style={styles.cercle}>
               </View>
             </View>
           </View>
-        )}
-
-        {/* Étape 12 */}
-        {step === 11 && (
-          <TouchableOpacity style={styles.containerFloor}>
-            <View style={styles.buttonContainerFloor}>
-              <View style={styles.buttonFloor}>
-              </View>
-            </View>
-            <Text style={styles.buttonTextFloor}>Modifie ton herbe</Text>
-          </TouchableOpacity>
         )}
 
       </BlurView>
