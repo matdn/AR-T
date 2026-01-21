@@ -1004,12 +1004,10 @@ export default function SceneThree() {
               {
                 id: 'orientation',
                 icon: require('../../assets/images/home.png'),
-                onPress: handleOrientationToggle,
               },
               {
                 id: 'profil',
                 icon: require('../../assets/images/profil.png'),
-                onPress: handleResetView,
               },
             ]}
           />
