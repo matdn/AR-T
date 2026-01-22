@@ -6,12 +6,13 @@ interface ButtonItem {
   id: string;
   Icon?: React.ComponentType<SvgProps>;
   label?: string;
-  onPress: () => void;
+  selected?: boolean;
+  onPress?: () => void;
 }
 
 interface ButtonTimeProps {
   buttons: ButtonItem[];
-  activeId: string;
+  activeId?: string;
   gap?: number;
   containerStyle?: ViewStyle;
 }
@@ -37,7 +38,11 @@ export default function ButtonTime({
       ]}
     >
       {buttons.map((button) => {
-        const isActive = button.id === activeId;
+        let isActive = button.id === activeId;
+        const isSelected = button.selected;
+        if (isSelected) {
+          isActive = isSelected
+        }
         const color = isActive ? ACTIVE : INACTIVE;
         const Icon = button.Icon;
 

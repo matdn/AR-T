@@ -7,9 +7,11 @@ import { Asset } from 'expo-asset';
 import * as ImageManipulator from 'expo-image-manipulator';
 import * as THREE from "three";
 import * as ScreenOrientation from 'expo-screen-orientation';
+import { Audio } from "expo-av";
 
 import Joystick from "../../components/Joystick";
 import ButtonMenu from "../../components/ButtonMenu";
+import ButtonOption from "../../components/ButtonOption";
 import ButtonEdit from "../../components/ButtonEdit";
 import ButtonTime from "../../components/ButtonTime";
 import ButtonWeather from "../../components/ButtonWeather";
@@ -22,7 +24,7 @@ import IconButterfly from "../../assets/icons/butterflyclean.svg";
 import IconMorning from "../../assets/icons/morningclean.svg";
 import IconEvening from "../../assets/icons/eveningclean.svg";
 import IconNight from "../../assets/icons/nightclean.svg";
-import ScreenTutorial from "../../components/Tutorial";
+import { ScreenTutorialGalerie, ScreenTutorialEdit } from "../../components/Tutorial";
 import ResetButton from "../../components/ResetButton";
 import FogControl, { initializeFog, updateFogDensity } from "../../components/FogControl";
 import { useDeviceMotion } from "../../hooks/useDeviceMotion";
@@ -34,7 +36,8 @@ import {
   createRandomRectangles,
   createRectangle,
   createGrassGrid,
-  createInnerAtmosphere
+  createInnerAtmosphere,
+  createGridFloor,
 } from "../../utils/sceneObjects";
 import {
   rotatePlanetWithCamera,
@@ -49,7 +52,8 @@ import {
   type AtmosphereRenderData
 } from "../../utils/atmosphereHelpers";
 import {
-  updateAtmosphereLUT,
+  createAtmosphereMeshes,
+  updateAtmosphereLUT, updateEnvironmentMaterial
 } from "@/components/Atmosphere";
 import { createWeatherSystem } from "@/components/Weather";
 import {
@@ -64,6 +68,7 @@ export default function SceneThree() {
   const rotationRef = useDeviceMotion();
   const [isLandscape, setIsLandscape] = useState(true);
   const [motionControlEnabled, setMotionControlEnabled] = useState(false);
+  const [grilleEnabled, setGrilleEnabled] = useState(false);
 
   const cameraRef = useRef<THREE.PerspectiveCamera | null>(null);
   const cubeRef = useRef<THREE.Mesh | null>(null);
@@ -75,7 +80,7 @@ export default function SceneThree() {
   const raycasterRef = useRef<THREE.Raycaster>(new THREE.Raycaster());
   const [screenDimensions, setScreenDimensions] = useState({ width: 0, height: 0 });
   const [sceneKey, setSceneKey] = useState(0); // Pour forcer le reload du GLView
-  const [viewSize, setViewSize] = useState({ width: 0, height: 0 }); // Taille CSS du GLView
+  const [viewSize, setViewSize] = useState({ width: 0, height: 0 });
   const [tapYBiasNDC] = useState(-1); // Petit biais vertical en NDC pour remonter le rayon
 
   const baseQuatRef = useRef<THREE.Quaternion>(new THREE.Quaternion());
@@ -86,7 +91,6 @@ export default function SceneThree() {
   const [joystickPosition, setJoystickPosition] = useState({ x: 0, y: 0 });
   const [lookJoystickPosition, setLookJoystickPosition] = useState({ x: 0, y: 0 });
 
-  // Grass refs
   const grassGroupRef = useRef<THREE.Group | null>(null);
   const grassMaterialRef = useRef<THREE.ShaderMaterial | null>(null);
   const grassParamsRef = useRef<{
@@ -100,8 +104,9 @@ export default function SceneThree() {
 
   const atmosphereDataRef = useRef<AtmosphereRenderData | null>(null);
   const innerAtmosphereRef = useRef<THREE.Group | null>(null);
+  const gridFloorRef = useRef<THREE.Group | null>(null);
+  const grilleEnabledRef = useRef(false);
 
-  // HDRI (remplace la LUT): background + environment
   const hdriTextureRef = useRef<THREE.Texture | null>(null);
   const hdriEnvRTRef = useRef<THREE.WebGLRenderTarget | null>(null);
   const pmremGenRef = useRef<THREE.PMREMGenerator | null>(null);
@@ -114,12 +119,114 @@ export default function SceneThree() {
   const pitchRef = useRef(0); // radians
   const yawRef = useRef(0);   // radians
 
+  const ambienceSoundRef = useRef<Audio.Sound | null>(null);
+  const ambienceKeyRef = useRef<string | null>(null);
+  const ambienceTokenRef = useRef(0);
+
+  const AMBIENCE_SOURCES = {
+    rain: require("../../assets/audio/ambience/rain.mp3"),
+    snow: require("../../assets/audio/ambience/wind.mp3"),
+    butterflyDay: require("../../assets/audio/ambience/cicada.mp3"),
+    butterflyNight: require("../../assets/audio/ambience/cricket.mp3"),
+    day: require("../../assets/audio/ambience/bird.mp3"),
+    night: require("../../assets/audio/ambience/owl.mp3"),
+  } as const;
+
+  type AmbienceKey = keyof typeof AMBIENCE_SOURCES;
+
+  const getAmbienceKey = (
+    weather: "rain" | "snow" | "butterfly" | "none",
+    time: "morning" | "midday" | "evening" | "night"
+  ): AmbienceKey => {
+    if (weather === "rain") return "rain";
+    if (weather === "snow") return "snow";
+    if (weather === "butterfly") return time === "morning" || time === "midday" ? "butterflyDay" : "butterflyNight";
+    // weather === "none"
+    return time === "morning" || time === "midday" ? "day" : "night";
+  };
+
+  const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+  const fadeVolume = async (sound: Audio.Sound, from: number, to: number, ms = 400, steps = 12) => {
+    const dt = ms / steps;
+    for (let i = 0; i <= steps; i++) {
+      const t = i / steps;
+      const v = from + (to - from) * t;
+      try {
+        await sound.setVolumeAsync(Math.max(0, Math.min(1, v)));
+      } catch {
+        // ignore si le son a été unload entre temps
+        return;
+      }
+      await sleep(dt);
+    }
+  };
+
+  const stopAndUnloadAmbience = async () => {
+    const s = ambienceSoundRef.current;
+    ambienceSoundRef.current = null;
+    ambienceKeyRef.current = null;
+    if (!s) return;
+    try {
+      await s.stopAsync();
+    } catch { }
+    try {
+      await s.unloadAsync();
+    } catch { }
+  };
+
+  const playAmbienceForKey = async (key: AmbienceKey) => {
+    const token = ++ambienceTokenRef.current;
+
+    // si c'est déjà le bon son, ne fais rien
+    if (ambienceKeyRef.current === key && ambienceSoundRef.current) return;
+
+    // coupe l'ancien en fondu
+    const prev = ambienceSoundRef.current;
+    if (prev) {
+      try {
+        const status = await prev.getStatusAsync();
+        const prevVol = (status as any)?.volume ?? 1;
+        await fadeVolume(prev, prevVol, 0, 350);
+      } catch { }
+      try { await prev.stopAsync(); } catch { }
+      try { await prev.unloadAsync(); } catch { }
+    }
+
+    // si un autre changement est intervenu pendant le fade, on abandonne
+    if (token !== ambienceTokenRef.current) return;
+
+    // charge le nouveau
+    const source = AMBIENCE_SOURCES[key];
+    const { sound } = await Audio.Sound.createAsync(
+      source,
+      {
+        shouldPlay: true,
+        isLooping: true,
+        volume: 0, // on fade in
+      }
+    );
+
+    // si un autre changement est intervenu pendant le load, on cleanup
+    if (token !== ambienceTokenRef.current) {
+      try { await sound.stopAsync(); } catch { }
+      try { await sound.unloadAsync(); } catch { }
+      return;
+    }
+
+    ambienceSoundRef.current = sound;
+    ambienceKeyRef.current = key;
+
+    // fade in
+    await fadeVolume(sound, 0, 1, 450);
+  };
+
   const handleLookJoystickMove = (v: { x: number; z: number }) => {
     lookInputRef.current = { x: v.x, y: v.z };
 
     const maxDistance = 40;
     setLookJoystickPosition({
-      x: -v.x * maxDistance, // même logique que ton autre joystick
+      x: -v.x * maxDistance,
       y: v.z * maxDistance,
     });
   };
@@ -130,31 +237,27 @@ export default function SceneThree() {
   };
 
 
-  // Weather systems (rain/snow/butterfly)
   const weatherRef = useRef<{
     rain?: { group: THREE.Group; update: (dt?: number) => void; material: THREE.SpriteMaterial };
     snow?: { group: THREE.Group; update: (dt?: number) => void; material: THREE.SpriteMaterial };
   }>({});
   const [weatherMode, setWeatherMode] = useState<'rain' | 'snow' | 'butterfly' | 'none'>('none');
 
-  // Time mode for LUT
   const [timeMode, setTimeMode] = useState<'morning' | 'midday' | 'evening' | 'night'>('midday');
 
-  //BUTTERFLY
   const butterflyDataRef = useRef<ButterflyData | null>(null);
 
-  // Fog control
-  const [fogDensity, setFogDensity] = useState(0.01);
-  const fogDensityRef = useRef(0.01);
+  const [fogDensity, setFogDensity] = useState(0);
+  const fogDensityRef = useRef(0);
 
-  // Image picker state
   const [pickerVisible, setPickerVisible] = useState(false);
   const [selectedRect, setSelectedRect] = useState<THREE.Mesh | null>(null);
 
-  // Edit mode state
   const [isEditMode, setIsEditMode] = useState(false);
 
-  // Grass Color mode state
+  const [tutorialGalerieCompleted, setTutorialGalerieCompleted] = useState(false);
+  const [tutorialEditCompleted, setTutorialEditCompleted] = useState(false);
+
   const [isGrassColorMode, setIsGrassColorMode] = useState(false);
 
   const [grassColorMode, setGrassColorMode] = useState<'yellow_1' | 'orange' | 'pink' | 'blue' | 'green_1' | 'green_2' | 'yellow_2' | 'red'>('green_1');
@@ -175,7 +278,6 @@ export default function SceneThree() {
   const applyTextureToRect = async (rect: THREE.Mesh, uri: string) => {
     try {
       const asset = Asset.fromURI(uri);
-      // Ensure the asset is loaded
       await asset.downloadAsync();
       // Déterminer la source locale de l'image
       const source = asset.localUri ?? asset.uri ?? uri;
@@ -245,6 +347,69 @@ export default function SceneThree() {
     }
   };
 
+  const hdriLoadTokenRef = useRef(0);
+
+  const loadHdriForMode = async (mode: 'morning' | 'midday' | 'evening' | 'night') => {
+    const scene = sceneRef.current;
+    const renderer = rendererRef.current;
+
+    if (!scene || !renderer) return;
+
+    const token = ++hdriLoadTokenRef.current;
+
+    try {
+      const skyByMode: Record<typeof mode, any> = {
+        morning: require('../../assets/textures/envMapNuitV2.png'),
+        midday: require('../../assets/textures/envMapMidday.png'),
+        evening: require('../../assets/textures/envMapNuitV2.png'),
+        night: require('../../assets/textures/envMapNuitV2.png'),
+      };
+
+      const skyModule = skyByMode[mode];
+      const skyAsset = Asset.fromModule(skyModule);
+      await skyAsset.downloadAsync();
+      const skyUri = skyAsset.localUri ?? skyAsset.uri;
+
+      // Si un autre clic a lancé un nouveau chargement entre temps, on annule celui-ci
+      if (token !== hdriLoadTokenRef.current) return;
+
+      const skyTexture = await new TextureLoader().loadAsync(skyUri);
+
+      // (re-check token après chargement texture)
+      if (token !== hdriLoadTokenRef.current) {
+        try { skyTexture.dispose(); } catch { }
+        return;
+      }
+
+      skyTexture.mapping = THREE.EquirectangularReflectionMapping;
+      skyTexture.wrapS = THREE.ClampToEdgeWrapping;
+      skyTexture.wrapT = THREE.ClampToEdgeWrapping;
+      skyTexture.minFilter = THREE.LinearFilter;
+      skyTexture.magFilter = THREE.LinearFilter;
+      skyTexture.generateMipmaps = false;
+      skyTexture.flipY = false;
+
+      // cleanup ancien HDRI
+      try { hdriEnvRTRef.current?.dispose?.(); } catch { }
+      try { pmremGenRef.current?.dispose?.(); } catch { }
+      try { hdriTextureRef.current?.dispose?.(); } catch { }
+
+      const pmrem = new THREE.PMREMGenerator(renderer as any);
+      pmrem.compileEquirectangularShader();
+      const envRT = pmrem.fromEquirectangular(skyTexture);
+
+      hdriTextureRef.current = skyTexture;
+      pmremGenRef.current = pmrem;
+      hdriEnvRTRef.current = envRT;
+
+      scene.background = null;
+      scene.environment = envRT.texture;
+    } catch (e) {
+      console.warn('[HDRI] Échec chargement HDRI:', e);
+    }
+  };
+
+
   const handleScreenTap = (event: GestureResponderEvent) => {
 
     if (isGrassColorMode) {
@@ -294,48 +459,47 @@ export default function SceneThree() {
         }
       }
 
-      // Sinon, placer un nouveau rectangle
-    const result = placeRectangleOnSurface(
-      raycasterRef.current,
-      cameraRef.current,
-      planetRef.current,
-      x,
-      y,
-      w,
-      h
-    );
+      const result = placeRectangleOnSurface(
+        raycasterRef.current,
+        cameraRef.current,
+        planetRef.current,
+        x,
+        y,
+        w,
+        h
+      );
 
-    if (result && planetRef.current) {
-      const rectangle = createRectangle(result.position, result.normal);
-      rectangle.layers.set(1);
-      // Ajouter les données pour l'animation et l'interaction
-      const rectCount = wallsRef.current.length;
-      rectangle.userData = {
-        basePosition: result.position.clone(),
-        floatOffset: Math.random() * Math.PI * 2,
-        floatSpeed: 0.5 + Math.random() * 0.5,
-        floatAmplitude: 0.1 + Math.random() * 0.15,
-        id: rectCount,
-        message: `Nouveau rectangle ${rectCount + 1}`
-      };
+      if (result && planetRef.current) {
+        const rectangle = createRectangle(result.position, result.normal);
+        rectangle.layers.set(1);
+        // Ajouter les données pour l'animation et l'interaction
+        const rectCount = wallsRef.current.length;
+        rectangle.userData = {
+          basePosition: result.position.clone(),
+          floatOffset: Math.random() * Math.PI * 2,
+          floatSpeed: 0.5 + Math.random() * 0.5,
+          floatAmplitude: 0.1 + Math.random() * 0.15,
+          id: rectCount,
+          message: `Nouveau rectangle ${rectCount + 1}`
+        };
 
-      console.log('Nouveau rectangle créé:', rectangle.userData.message);
+        console.log('Nouveau rectangle créé:', rectangle.userData.message);
 
-      planetRef.current.add(rectangle);
-      wallsRef.current.push(rectangle);
+        planetRef.current.add(rectangle);
+        wallsRef.current.push(rectangle);
 
-      // Créer et attacher un proxy pour ce nouveau rectangle
-      const proxyGeo = new THREE.SphereGeometry(0.9, 12, 12);
-      const proxyMat = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0, depthWrite: false });
-      const proxy = new THREE.Mesh(proxyGeo, proxyMat);
-      proxy.userData = { target: rectangle };
-      proxy.frustumCulled = false;
-      // Décalage léger vers l'extérieur le long de la normale pour réduire les chevauchements
-      const normal = result.normal.clone().normalize();
-      proxy.position.addScaledVector(normal, 0.2);
-      rectangle.add(proxy);
-      hitProxiesRef.current.push(proxy);
-    }
+        // Créer et attacher un proxy pour ce nouveau rectangle
+        const proxyGeo = new THREE.SphereGeometry(0.9, 12, 12);
+        const proxyMat = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0, depthWrite: false });
+        const proxy = new THREE.Mesh(proxyGeo, proxyMat);
+        proxy.userData = { target: rectangle };
+        proxy.frustumCulled = false;
+        // Décalage léger vers l'extérieur le long de la normale pour réduire les chevauchements
+        const normal = result.normal.clone().normalize();
+        proxy.position.addScaledVector(normal, 0.2);
+        rectangle.add(proxy);
+        hitProxiesRef.current.push(proxy);
+      }
     } catch (e) {
       console.error('[handleScreenTap] erreur:', e);
     }
@@ -347,8 +511,8 @@ export default function SceneThree() {
     velocityRef.current = velocity;
     const maxDistance = 40;
     setJoystickPosition({
-      x: -velocity.x * maxDistance,  // Inversé pour correspondre au touch
-      y: velocity.z * maxDistance,   // Inversé pour correspondre au touch
+      x: -velocity.x * maxDistance,
+      y: velocity.z * maxDistance,
     });
   };
 
@@ -390,9 +554,50 @@ export default function SceneThree() {
     setFogDensity(value);
     fogDensityRef.current = value;
 
-    // Mettre à jour le fog de la scène en temps réel via la fonction du composant
     updateFogDensity(sceneRef.current, value);
   };
+
+  useEffect(() => {
+    (async () => {
+      try {
+        await Audio.setAudioModeAsync({
+          allowsRecordingIOS: false,
+          staysActiveInBackground: false,
+          playsInSilentModeIOS: true, // important sur iOS
+          shouldDuckAndroid: true,
+          playThroughEarpieceAndroid: false,
+        });
+      } catch (e) {
+        console.warn("[AudioMode] error", e);
+      }
+    })();
+  }, []);
+
+  useEffect(() => {
+    const key = getAmbienceKey(weatherMode, timeMode);
+    playAmbienceForKey(key);
+  }, [weatherMode, timeMode]);
+
+  useEffect(() => {
+    loadHdriForMode(timeMode);
+
+    const envMesh = atmosphereDataRef.current?.envMesh;
+    if (envMesh) {
+      const mat = envMesh.material as THREE.MeshBasicMaterial;
+      updateEnvironmentMaterial(mat, timeMode);
+    }
+
+    const grassColorMap: Record<typeof timeMode, GrassColorMode> = {
+      morning: 'orange',
+      midday: 'green_1',
+      evening: 'pink',
+      night: 'yellow_2',
+    };
+
+    setGrassColorMode(grassColorMap[timeMode]);
+  }, [timeMode]);
+
+
 
   useEffect(() => {
     ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.LANDSCAPE_RIGHT);
@@ -405,21 +610,25 @@ export default function SceneThree() {
   }, [motionControlEnabled]);
 
   useEffect(() => {
+    grilleEnabledRef.current = grilleEnabled;
+    if (gridFloorRef.current) {
+      gridFloorRef.current.visible = grilleEnabled;
+    }
+  }, [grilleEnabled]);
+
+  useEffect(() => {
     const v = getGrassColorByMode(grassColorMode);
 
-    // --- GRASS SHADER ---
     const grassMat = grassMaterialRef.current;
     if (grassMat?.uniforms?.uGrassColor?.value) {
       (grassMat.uniforms.uGrassColor.value as THREE.Vector3).copy(v);
     }
 
-    // --- PLANET MATERIAL ---
     const planet = planetRef.current;
     if (planet) {
       const mat = planet.material;
       if (!mat) return;
 
-      // si tableau de matériaux
       if (Array.isArray(mat)) {
         mat.forEach((m) => {
           const anyM = m as any;
@@ -437,22 +646,18 @@ export default function SceneThree() {
 
 
 
-  // Cleanup resources when scene reloads
   useEffect(() => {
     return () => {
-      // Cleanup animation frame
       if (animationFrameId.current !== null) {
         cancelAnimationFrame(animationFrameId.current);
       }
 
-      // Cleanup atmosphere resources
       if (atmosphereDataRef.current) {
         atmosphereDataRef.current.renderTarget?.dispose();
         atmosphereDataRef.current.postMaterial?.dispose();
         atmosphereDataRef.current = null;
       }
 
-      // Cleanup HDRI resources
       if (sceneRef.current) {
         try { (sceneRef.current as any).background = null; } catch { }
         try { (sceneRef.current as any).environment = null; } catch { }
@@ -464,13 +669,11 @@ export default function SceneThree() {
       pmremGenRef.current = null;
       hdriTextureRef.current = null;
 
-      // Cleanup grass material
       if (grassMaterialRef.current) {
         grassMaterialRef.current.dispose();
         grassMaterialRef.current = null;
       }
 
-      // Cleanup weather groups/materials
       const scene = sceneRef.current;
       if (scene) {
         if (weatherRef.current.rain) {
@@ -488,12 +691,13 @@ export default function SceneThree() {
 
       disposeButterflySystem(butterflyDataRef.current);
       butterflyDataRef.current = null;
+
+      stopAndUnloadAmbience();
     };
-  }, [sceneKey]); // Re-run cleanup when scene reloads
+  }, [sceneKey]);
 
 
   const onContextCreate = (gl: ExpoWebGLRenderingContext) => {
-    // Cleanup previous atmosphere if exists
     if (atmosphereDataRef.current) {
       atmosphereDataRef.current.renderTarget?.dispose();
       atmosphereDataRef.current.postMaterial?.dispose();
@@ -545,20 +749,23 @@ export default function SceneThree() {
     dirLight.position.set(3, 5, 2);
     scene.add(dirLight);
 
-    // Create planet with grid lines
     const planet = createPlanet();
     addGridLinesToPlanet(planet);
     planet.renderOrder = 1; // Rendre la planète après l'atmosphère
     scene.add(planet);
     planetRef.current = planet;
 
-    // Create inner atmosphere wireframe
     const innerAtmo = createInnerAtmosphere();
     innerAtmo.renderOrder = 2; // Rendre par dessus la planète
     scene.add(innerAtmo);
     innerAtmosphereRef.current = innerAtmo;
 
-    // Create random rectangles + proxies pour améliorer le hit au toucher
+    const gridFloor = createGridFloor();
+    gridFloor.renderOrder = 2; // Rendre par dessus la planète
+    gridFloor.visible = false; // Masqué par défaut
+    scene.add(gridFloor);
+    gridFloorRef.current = gridFloor;
+
     const rectangles = createRandomRectangles(20);
     const proxies: THREE.Mesh[] = [];
     rectangles.forEach(rect => {
@@ -582,52 +789,18 @@ export default function SceneThree() {
     wallsRef.current = rectangles;
     hitProxiesRef.current = proxies;
 
+    const atmosphereData = createAtmosphereMeshes(scene, width, height, {
+      planetPosition: new THREE.Vector3(0, -50, 0),
+      envRadius: 100,
+      enableLUT: true,
+      lutIntensity: 1,
+      timeMode: timeMode,
+    });
+
     // Remplacer la LUT par un HDRI (background + lighting)
-    atmosphereDataRef.current = null;
-    (async () => {
-      try {
-        const skyByMode: Record<string, any> = {
-          morning: require('../../assets/textures/sky_16_2k.png'),
-          midday: require('../../assets/textures/sky_17_2k.png'),
-          evening: require('../../assets/textures/sky_40_2k.png'),
-          night: require('../../assets/textures/sky_402_2k.png'),
-        };
+    atmosphereDataRef.current = atmosphereData;
+    loadHdriForMode(timeMode);
 
-        const skyModule = skyByMode[timeMode] ?? skyByMode.evening;
-        const skyAsset = Asset.fromModule(skyModule);
-        await skyAsset.downloadAsync();
-        const skyUri = skyAsset.localUri ?? skyAsset.uri;
-
-        const skyTexture = await new TextureLoader().loadAsync(skyUri);
-        skyTexture.mapping = THREE.EquirectangularReflectionMapping;
-        skyTexture.wrapS = THREE.ClampToEdgeWrapping;
-        skyTexture.wrapT = THREE.ClampToEdgeWrapping;
-        skyTexture.minFilter = THREE.LinearFilter;
-        skyTexture.magFilter = THREE.LinearFilter;
-        skyTexture.generateMipmaps = false;
-        skyTexture.flipY = false;
-
-        // Nettoyage de l'ancien HDRI si existant
-        try { hdriEnvRTRef.current?.dispose?.(); } catch { }
-        try { pmremGenRef.current?.dispose?.(); } catch { }
-        try { hdriTextureRef.current?.dispose?.(); } catch { }
-
-        const pmrem = new THREE.PMREMGenerator(renderer as any);
-        pmrem.compileEquirectangularShader();
-        const envRT = pmrem.fromEquirectangular(skyTexture);
-
-        hdriTextureRef.current = skyTexture;
-        pmremGenRef.current = pmrem;
-        hdriEnvRTRef.current = envRT;
-
-        scene.background = skyTexture;
-        scene.environment = envRT.texture;
-      } catch (e) {
-        console.warn('[HDRI] Échec chargement HDRI:', e);
-      }
-    })();
-
-    // Create grass grid
     const grassData = createGrassGrid({
       gridSize: 8,
       tileSize: 4,
@@ -639,7 +812,6 @@ export default function SceneThree() {
       maxHeight: 0.6,
     });
 
-    // Weather: Rain system (ajusté pour être visible autour de la caméra qui est à Y=2)
     const rainSystem = createWeatherSystem(scene, {
       rainCount: 1000,
       spreadX: 30,
@@ -651,19 +823,17 @@ export default function SceneThree() {
       type: 'rain',
     });
 
-    // Weather: Snow system (ajusté pour être visible autour de la caméra)
     const snowSystem = createWeatherSystem(scene, {
       rainCount: 750,
       spreadX: 30,
       spreadY: 20,
       minY: 8,
       maxY: 15,
-      fallSpeed: 1.5,
+      fallSpeed: 0.5,
       resetThreshold: -2,
       type: 'snow',
     });
 
-    // Par défaut: montrer la neige, cacher la pluie
     rainSystem.rainGroup.visible = false;
     snowSystem.rainGroup.visible = true;
 
@@ -672,11 +842,9 @@ export default function SceneThree() {
       snow: { group: snowSystem.rainGroup, update: snowSystem.updateRain, material: snowSystem.material as any },
     };
 
-    // Apply initial weather mode
     const applyWeatherVisibility = (mode: 'rain' | 'snow' | 'butterfly' | 'none') => {
       if (weatherRef.current.rain) weatherRef.current.rain.group.visible = (mode === 'rain');
       if (weatherRef.current.snow) weatherRef.current.snow.group.visible = (mode === 'snow');
-      // Les papillons sont gérés séparément via butterflyDataRef
       if (butterflyDataRef.current) {
         butterflyDataRef.current.sprites.forEach(sprite => {
           sprite.visible = (mode === 'butterfly');
@@ -702,13 +870,11 @@ export default function SceneThree() {
     cube.position.set(0, 0.5, 0);
     cubeRef.current = cube;
 
-    //BUTTERFLY
-    // 👇 Initialiser le système de papillons
+
     (async () => {
       try {
         const butterflyData = await initializeButterflySystem(scene, 50);
         butterflyDataRef.current = butterflyData;
-        // Désactiver les papillons par défaut
         butterflyData.sprites.forEach(sprite => {
           sprite.visible = false;
         });
@@ -737,7 +903,7 @@ export default function SceneThree() {
         } else {
           // --- GYRO OFF : joystick look ---
           // dt simple
-          const dt = clockRef.current.getDelta(); // tu as déjà clockRef
+          const dt = clockRef.current.getDelta();
           const look = lookInputRef.current;
 
           // vitesses (à ajuster)
@@ -769,13 +935,15 @@ export default function SceneThree() {
 
       cube.rotation.y += 0.01;
 
-      // Rotate inner atmosphere slowly
       if (innerAtmosphereRef.current) {
         innerAtmosphereRef.current.rotation.y += 0.0005;
         innerAtmosphereRef.current.rotation.x += 0.0005;
       }
 
-      // Update grass shader time
+      // if (gridFloorRef.current) {
+      //   gridFloorRef.current.rotation.x += 0.0005;
+      // }
+
       if (grassMaterialRef.current && sceneRef.current) {
         updateGrassTime(grassMaterialRef.current, clockRef.current.getElapsedTime());
         // Synchroniser le fog du shader avec la scène
@@ -802,7 +970,6 @@ export default function SceneThree() {
         const currentRotationX = planetRef.current.rotation.x;
         const currentRotationY = planetRef.current.rotation.y;
 
-        // Apply rotation based on joystick input
         rotatePlanetWithCamera(
           planetRef.current,
           cameraRef.current,
@@ -811,16 +978,18 @@ export default function SceneThree() {
 
         planetRef.current.updateMatrixWorld(true);
 
-        // Check for collisions
         const hasCollision = checkCollisions(cameraRef.current, wallsRef.current);
 
         if (hasCollision) {
           planetRef.current.rotation.x = currentRotationX;
           planetRef.current.rotation.y = currentRotationY;
         }
+
+        if (gridFloorRef.current) {
+          gridFloorRef.current.rotation.copy(planetRef.current.rotation);
+        }
       }
 
-      // Update grass wrapping based on planet rotation
       if (grassGroupRef.current && planetRef.current && grassParamsRef.current) {
         prevRotRef.current = updateGrassWrapping(
           grassGroupRef.current,
@@ -830,7 +999,6 @@ export default function SceneThree() {
         );
       }
 
-      // Animate floating rectangles
       const time = clockRef.current.getElapsedTime();
       wallsRef.current.forEach(rect => {
         if (rect.userData.basePosition) {
@@ -870,7 +1038,7 @@ export default function SceneThree() {
           tmpBasisMatrixRef.current.makeBasis(tmpRightRef.current, tmpUpNormalRef.current, tmpForwardRef.current);
           tmpWorldQuatRef.current.setFromRotationMatrix(tmpBasisMatrixRef.current);
 
-          // convertir world quaternion -> local (car le mur est enfant de la planète)
+
           const parent = rect.parent;
           if (!parent) return;
           parent.getWorldQuaternion(tmpParentWorldQuatRef.current);
@@ -879,7 +1047,6 @@ export default function SceneThree() {
         });
       }
 
-      // BUTTERFLY: Animation des papillons
       if (butterflyDataRef.current) {
         updateButterflyAnimation(
           butterflyDataRef.current.sprites,
@@ -888,7 +1055,6 @@ export default function SceneThree() {
         );
       }
 
-      // Render with atmosphere post-processing
       renderWithAtmosphere(renderer, scene, camera, atmosphereDataRef.current, gl);
     };
 
@@ -917,7 +1083,21 @@ export default function SceneThree() {
   return (
     <View style={styles.container}>
 
-      {/* <ScreenTutorial></ScreenTutorial> */}
+      {!tutorialGalerieCompleted && (
+        <ScreenTutorialGalerie
+          onTutorialGalerieComplete={() => {
+            setTutorialGalerieCompleted(true);
+          }}
+        />
+      )}
+
+      {isEditMode && !tutorialEditCompleted && (
+        <ScreenTutorialEdit
+          onTutorialEditComplete={() => {
+            setTutorialEditCompleted(true);
+          }}
+        />
+      )}
 
       <View
         style={styles.glView}
@@ -941,58 +1121,77 @@ export default function SceneThree() {
         />
       )}
 
-      {!isEditMode && (
-        <ButtonMenu
-          position="top-left"
-          gap={12}
-          activeId={motionControlEnabled ? 'motion' : undefined}
-          buttons={[
-            {
-              id: 'orientation',
-              icon: require('../../assets/images/home.png'),
-              onPress: handleOrientationToggle,
-            },
-            {
-              id: 'grille',
-              icon: require('../../assets/images/grille.png'),
-              onPress: handleResetView,
-            },
-            {
-              id: 'motion',
-              icon: require('../../assets/images/gyro.png'),
-              onPress: () => setMotionControlEnabled(v => !v),
-            },
-          ]}
-        />
-      )}
+      <View style={styles.bottomLeftControls}>
+        {!isEditMode && (
+          <ButtonMenu
+            gap={12}
+            activeId={motionControlEnabled ? 'motion' : undefined}
+            buttons={[
+              {
+                id: 'orientation',
+                icon: require('../../assets/images/home.png'),
+              },
+              {
+                id: 'profil',
+                icon: require('../../assets/images/profil.png'),
+              },
+            ]}
+          />
+        )}
+      </View>
 
-      {!isEditMode && !isGrassColorMode && (
-        <ButtonEdit
-          position="top-right"
-          gap={12}
-          buttons={[
-            {
-              id: 'edit',
-              icon: require('../../assets/images/edit.png'),
-              onPress: () => setIsEditMode(v => !v),
-            },
-          ]}
-        />
-      )}
+      <View style={styles.bottomRightControls}>
 
-      {isEditMode && !isGrassColorMode && (
-        <ButtonEdit
-          position="top-right"
-          gap={12}
-          buttons={[
-            {
-              id: 'edit',
-              icon: require('../../assets/images/no_edit.png'),
-              onPress: () => setIsEditMode(v => !v),
-            },
-          ]}
-        />
-      )}
+        {!isEditMode && (
+          <ButtonOption
+            gap={12}
+            activeId={[
+              ...(grilleEnabled ? ['grille'] : []),
+              ...(motionControlEnabled ? ['motion'] : []),
+            ]}
+            buttons={[
+              {
+                id: 'grille',
+                icon: require('../../assets/images/grille.png'),
+                onPress: () => setGrilleEnabled(v => !v),
+              },
+              {
+                id: 'motion',
+                icon: require('../../assets/images/gyro.png'),
+                onPress: () => setMotionControlEnabled(v => !v),
+              },
+            ]}
+          />
+        )}
+
+        {!isEditMode && !isGrassColorMode && (
+          <ButtonEdit
+            gap={12}
+            buttons={[
+              {
+                id: 'edit',
+                icon: require('../../assets/images/edit.png'),
+                onPress: () => setIsEditMode(v => !v),
+              },
+            ]}
+          />
+        )}
+
+        {isEditMode && !isGrassColorMode && (
+          <ButtonEdit
+            gap={12}
+            buttons={[
+              {
+                id: 'edit',
+                icon: require('../../assets/images/no_edit.png'),
+                onPress: () => setIsEditMode(v => !v),
+              },
+            ]}
+          />
+        )}
+
+      </View>
+
 
       {motionControlEnabled && <ResetButton onPress={handleResetView} />}
 
@@ -1132,7 +1331,7 @@ export default function SceneThree() {
             fogDensity={fogDensity}
             onFogDensityChange={handleFogDensityChange}
             minValue={0}
-            maxValue={0.3}
+            maxValue={0.15}
             step={0.01}
           />
 
@@ -1164,7 +1363,7 @@ export default function SceneThree() {
             },
             {
               id: 'pink',
-              color: '#E36887',
+              color: '#F761DE',
               onPress: () => {
                 setGrassColorMode('pink');
               },
@@ -1192,7 +1391,7 @@ export default function SceneThree() {
             },
             {
               id: 'yellow_2',
-              color: '#FAD062',
+              color: '#6859f2',
               onPress: () => {
                 setGrassColorMode('yellow_2');
               },
@@ -1265,7 +1464,7 @@ const styles = StyleSheet.create({
     left: 0,
     zIndex: 999,
     backgroundColor: 'rgba(179, 184, 194, 0.60)',
-    
+
   },
   glView: {
     flex: 1,
@@ -1314,5 +1513,20 @@ const styles = StyleSheet.create({
     display: 'flex',
     flexDirection: 'row',
     gap: 24,
+  },
+  bottomLeftControls: {
+    position: 'absolute',
+    top: 25,
+    left: 24,
+    display: 'flex',
+    flexDirection: 'row',
+  },
+  bottomRightControls: {
+    position: 'absolute',
+    top: 25,
+    right: 24,
+    display: 'flex',
+    flexDirection: 'row',
+    gap: 12,
   }
 });

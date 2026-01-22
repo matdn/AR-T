@@ -5,49 +5,27 @@ interface ButtonItem {
   id: string;
   icon?: any;
   label?: string;
-  onPress: () => void;
+  onPress?: () => void;
 }
 
 interface ButtonEditProps {
   buttons: ButtonItem[];
-  position?: 'top-left' | 'top-right' | 'bottom-left' | 'bottom-right';
   gap?: number;
   containerStyle?: ViewStyle;
 }
 
 export default function ButtonEdit({ 
   buttons, 
-  position = 'top-left',
   gap = 12,
   containerStyle
 }: ButtonEditProps) {
   const { width, height } = useWindowDimensions();
   const isLandscape = width > height;
 
-  const getPositionStyle = () => {
-    const basePosition = {
-      position: 'absolute' as const,
-    };
-
-    switch (position) {
-      case 'top-left':
-        return { ...basePosition, top: 25, left: 24 };
-      case 'top-right':
-        return { ...basePosition, top: 25, right: 24 };
-      case 'bottom-left':
-        return { ...basePosition, bottom: 40, left: 24 };
-      case 'bottom-right':
-        return { ...basePosition, bottom: 40, right: 24 };
-      default:
-        return { ...basePosition, top: 25, left: 24 };
-    }
-  };
-
   return (
     <View 
       style={[
         styles.groupContainer,
-        getPositionStyle(),
         {
           gap: gap,
           flexDirection: isLandscape ? 'row' : 'column',
@@ -81,6 +59,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   button: {
+    width: 45,
+    height: 45,
     padding: 5,
     borderRadius: 100,
     backgroundColor: 'rgba(244, 244, 244, 0.50)',

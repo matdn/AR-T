@@ -8,22 +8,21 @@ interface ButtonItem {
   onPress?: () => void;
 }
 
-interface ButtonMenuProps {
+interface ButtonOptionProps {
   buttons: ButtonItem[];
   gap?: number;
   containerStyle?: ViewStyle;
-  activeId?: string;
+  activeId?: string | string[];
 }
 
-export default function ButtonMenu({
+export default function ButtonOption({
   buttons,
   gap = 12,
   containerStyle,
   activeId
-}: ButtonMenuProps) {
+}: ButtonOptionProps) {
   const { width, height } = useWindowDimensions();
   const isLandscape = width > height;
-
 
   return (
     <View
@@ -37,7 +36,7 @@ export default function ButtonMenu({
       ]}
     >
       {buttons.map((button) => {
-        const isActive = button.id === activeId;
+        const isActive = Array.isArray(activeId) ? activeId.includes(button.id) : button.id === activeId;
         return (
         <TouchableOpacity
           key={button.id}
@@ -69,7 +68,7 @@ const styles = StyleSheet.create({
     height: 45,
     padding: 12,
     borderRadius: 100,
-    backgroundColor: '#909FF7',
+    backgroundColor: 'rgba(9, 0, 255, 0.25)',
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
@@ -78,7 +77,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#0900FF'
   },
   buttonInactive: {
-    backgroundColor: '#909FF7',
+    backgroundColor: 'rgba(9, 0, 255, 0.25)',
   },
   buttonText: {
     fontSize: 12,

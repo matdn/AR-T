@@ -20,11 +20,11 @@ export type GrassColorMode =
 const GRASS_COLORS: Record<GrassColorMode, THREE.Vector3> = {
   yellow_1: new THREE.Vector3(0.953, 0.851, 0.561),
   orange:   new THREE.Vector3(0.945, 0.549, 0.133),
-  pink:     new THREE.Vector3(0.890, 0.407, 0.529),
+  pink:     new THREE.Vector3(0.878, 0.450, 1.000),
   blue:     new THREE.Vector3(0.447, 0.596, 0.780),
   green_1:  new THREE.Vector3(0.705, 0.709, 0.207),
   green_2:  new THREE.Vector3(0.168, 0.533, 0.360),
-  yellow_2: new THREE.Vector3(0.980, 0.815, 0.384),
+  yellow_2: new THREE.Vector3(0.408, 0.349, 0.949),
   red:      new THREE.Vector3(0.949, 0.027, 0.070),
 };
 

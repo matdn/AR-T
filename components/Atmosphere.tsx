@@ -1,29 +1,69 @@
 import { TextureLoader } from "expo-three";
 import * as THREE from "three";
 
-export const createEnvironmentMaterial = () => {
-  const envTexture = new TextureLoader().load(
-    require("../assets/textures/lunettes.png")
-  );
+export type TimeMode = 'morning' | 'midday' | 'evening' | 'night';
+
+const getEnvMapModuleByMode = (mode: TimeMode) => {
+  const envPaths: Record<TimeMode, any> = {
+    morning: require("../assets/textures/envMapMatin.png"),
+    midday: require("../assets/textures/envMapMidday.png"),
+    evening: require("../assets/textures/envMapSoir.png"),
+    night: require("../assets/textures/envMapNuitV2.png"),
+  };
+  return envPaths[mode] ?? envPaths.midday;
+};
+
+export const createEnvironmentMaterial = (mode: TimeMode = 'midday') => {
+  const envTexture = new TextureLoader().load(getEnvMapModuleByMode(mode));
 
   envTexture.flipY = false;
   envTexture.wrapS = envTexture.wrapT = THREE.ClampToEdgeWrapping;
   envTexture.rotation = Math.PI;
   envTexture.center.set(0.5, 0.5);
+  envTexture.minFilter = THREE.LinearFilter;
+  envTexture.magFilter = THREE.LinearFilter;
+  envTexture.generateMipmaps = false;
 
   return new THREE.MeshBasicMaterial({
     map: envTexture,
     side: THREE.BackSide,
     depthWrite: false,
+    toneMapped: false,
+    fog: true,
   });
 };
 
+export const updateEnvironmentMaterial = (
+  material: THREE.MeshBasicMaterial,
+  mode: TimeMode
+) => {
+  const oldMap = material.map as THREE.Texture | null;
+
+  const newMap = new TextureLoader().load(getEnvMapModuleByMode(mode));
+  newMap.flipY = false;
+  newMap.wrapS = newMap.wrapT = THREE.ClampToEdgeWrapping;
+  newMap.rotation = Math.PI;
+  newMap.center.set(0.5, 0.5);
+  newMap.minFilter = THREE.LinearFilter;
+  newMap.magFilter = THREE.LinearFilter;
+  newMap.generateMipmaps = false;
+
+  material.map = newMap;
+  material.needsUpdate = true;
+
+  if (oldMap && oldMap !== newMap) {
+    try { oldMap.dispose(); } catch {}
+  }
+};
+
+
+
 export const getLUTTextureByMode = (mode: 'morning' | 'midday' | 'evening' | 'night' = 'midday'): THREE.Texture => {
   const lutPaths: Record<string, any> = {
-    morning: require("../assets/textures/lut_morning.png"),
+    morning: require("../assets/textures/lut_midday.png"),
     midday: require("../assets/textures/lut_midday.png"), // Utilise lut_morning_2 pour le midi
-    evening: require("../assets/textures/lut_sunset.png"),
-    night: require("../assets/textures/lut_night.png"),
+    evening: require("../assets/textures/lut_midday.png"),
+    night: require("../assets/textures/lut_midday.png"),
   };
 
   const lutTexture = new TextureLoader().load(lutPaths[mode] || lutPaths.midday);
@@ -146,7 +186,7 @@ export const createAtmosphereMeshes = (
   );
   postScene.add(postQuad);
 
-  const envMaterial = createEnvironmentMaterial();
+  const envMaterial = createEnvironmentMaterial(timeMode);
   const envGeo = new THREE.SphereGeometry(envRadius, 64, 32);
   const envMesh = new THREE.Mesh(envGeo, envMaterial);
   envMesh.position.copy(planetPosition);

@@ -2,7 +2,7 @@ import React from 'react';
 import { View, TouchableOpacity, StyleSheet, Text } from 'react-native';
 
 interface ButtonFloorProps {
-  onPress: () => void;
+  onPress?: () => void;
 }
 
 export default function ResetButton({ onPress }: ButtonFloorProps) {
@@ -12,7 +12,7 @@ export default function ResetButton({ onPress }: ButtonFloorProps) {
         <View style={styles.button}>
         </View>
       </View>
-      <Text style={styles.buttonText}>Modifie ton herbe</Text>
+      <Text style={styles.buttonText}>Modification du sol</Text>
     </TouchableOpacity>
   );
 }
