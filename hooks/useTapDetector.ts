@@ -35,7 +35,14 @@ export function useTapDetector({ onTap }: UseTapDetectorProps) {
         const deltaTime = touchEnd.time - touchStartRef.current.time;
         
         if (deltaX < 10 && deltaY < 10 && deltaTime < 300) {
+          if (typeof __DEV__ !== 'undefined' && __DEV__) {
+            console.log('[useTapDetector] tap', { x: touchEnd.x, y: touchEnd.y, dt: deltaTime, dx: deltaX, dy: deltaY });
+          }
           onTap(event);
+        } else {
+          if (typeof __DEV__ !== 'undefined' && __DEV__) {
+            console.log('[useTapDetector] ignore', { x: touchEnd.x, y: touchEnd.y, dt: deltaTime, dx: deltaX, dy: deltaY });
+          }
         }
         
         touchStartRef.current = null;

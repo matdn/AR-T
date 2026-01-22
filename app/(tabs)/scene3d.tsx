@@ -42,7 +42,6 @@ import {
 import {
   rotatePlanetWithCamera,
   checkCollisions,
-  placeRectangleOnSurface
 } from "../../utils/sceneHelpers";
 import { updateGrassTime } from "../../utils/grassShader";
 import { getGrassColorByMode, type GrassColorMode } from "../../utils/grassShader";
@@ -74,10 +73,8 @@ export default function SceneThree() {
   const cubeRef = useRef<THREE.Mesh | null>(null);
   const planetRef = useRef<THREE.Mesh | null>(null);
   const wallsRef = useRef<THREE.Mesh[]>([]);
-  const hitProxiesRef = useRef<THREE.Mesh[]>([]);
   const rendererRef = useRef<Renderer | null>(null);
   const sceneRef = useRef<THREE.Scene | null>(null);
-  const raycasterRef = useRef<THREE.Raycaster>(new THREE.Raycaster());
   const [screenDimensions, setScreenDimensions] = useState({ width: 0, height: 0 });
   const [sceneKey, setSceneKey] = useState(0); // Pour forcer le reload du GLView
   const [viewSize, setViewSize] = useState({ width: 0, height: 0 });
@@ -99,6 +96,11 @@ export default function SceneThree() {
     halfWidth: number;
     wrapDistance: number;
   } | null>(null);
+
+  const waterGroupRef = useRef<THREE.Group | null>(null);
+  const waterMaterialRef = useRef<THREE.MeshPhysicalMaterial | null>(null);
+  const waterDudvRef = useRef<THREE.Texture | null>(null);
+
   const prevRotRef = useRef({ x: 0, z: 0 });
   const clockRef = useRef<THREE.Clock>(new THREE.Clock());
 
@@ -250,9 +252,6 @@ export default function SceneThree() {
   const [fogDensity, setFogDensity] = useState(0);
   const fogDensityRef = useRef(0);
 
-  const [pickerVisible, setPickerVisible] = useState(false);
-  const [selectedRect, setSelectedRect] = useState<THREE.Mesh | null>(null);
-
   const [isEditMode, setIsEditMode] = useState(false);
 
   const [tutorialGalerieCompleted, setTutorialGalerieCompleted] = useState(false);
@@ -261,6 +260,8 @@ export default function SceneThree() {
   const [isGrassColorMode, setIsGrassColorMode] = useState(false);
 
   const [grassColorMode, setGrassColorMode] = useState<'yellow_1' | 'orange' | 'pink' | 'blue' | 'green_1' | 'green_2' | 'yellow_2' | 'red'>('green_1');
+
+  const [groundMode, setGroundMode] = useState<'grass' | 'water'>('grass');
 
   // Billboarding temps (évite des allocations par frame)
   const tmpRectWorldPosRef = useRef(new THREE.Vector3());
@@ -305,6 +306,11 @@ export default function SceneThree() {
       texture.magFilter = THREE.LinearFilter;
       texture.generateMipmaps = false;
       texture.flipY = false;
+
+      // Fix orientation (certaines images ressortent "à l'envers" sur les murs)
+      texture.center.set(0.5, 0.5);
+      texture.rotation = Math.PI;
+      texture.needsUpdate = true;
 
       // Appliquer la texture uniquement sur les 2 grandes faces (indices 4 et 5 = front et back)
       const mat = rect.material;
@@ -359,9 +365,9 @@ export default function SceneThree() {
 
     try {
       const skyByMode: Record<typeof mode, any> = {
-        morning: require('../../assets/textures/envMapNuitV2.png'),
+        morning: require('../../assets/textures/envMapMatin.png'),
         midday: require('../../assets/textures/envMapMidday.png'),
-        evening: require('../../assets/textures/envMapNuitV2.png'),
+        evening: require('../../assets/textures/envMapSoir.png'),
         night: require('../../assets/textures/envMapNuitV2.png'),
       };
 
@@ -410,95 +416,166 @@ export default function SceneThree() {
   };
 
 
-  const handleScreenTap = (event: GestureResponderEvent) => {
+  const handleScreenTap = async (event: GestureResponderEvent) => {
+    if (typeof __DEV__ !== 'undefined' && __DEV__) {
+      console.log('[Tap] received', {
+        x: event?.nativeEvent?.locationX,
+        y: event?.nativeEvent?.locationY,
+        isGrassColorMode,
+        hasCamera: !!cameraRef.current,
+        hasPlanet: !!planetRef.current,
+        viewSize,
+        screenDimensions,
+      });
+    }
 
     if (isGrassColorMode) {
       setIsGrassColorMode(false);
       return;
     }
 
-    if (!cameraRef.current || !planetRef.current || !raycasterRef.current) return;
+    if (!cameraRef.current || !planetRef.current) {
+      console.warn('[Tap] missing camera/planet');
+      return;
+    }
     try {
-      if (!cameraRef.current || !planetRef.current || !raycasterRef.current) return;
+      if (!cameraRef.current || !planetRef.current) return;
 
       const x = event.nativeEvent.locationX;
       const y = event.nativeEvent.locationY;
 
-      // Créer un raycaster pour détecter les clics sur les rectangles via des proxies simples
-      const mouse = new THREE.Vector2();
-      let w = viewSize.width;
-      let h = viewSize.height;
-      if (!w || !h) {
-        const sizeVec = new THREE.Vector2();
-        rendererRef.current?.getSize(sizeVec);
-        w = sizeVec.x || screenDimensions.width;
-        h = sizeVec.y || screenDimensions.height;
+      // --- Place wall in front of the camera (ignores tap position) ---
+      const cam = cameraRef.current;
+      const planet = planetRef.current;
+
+      planet.updateMatrixWorld(true);
+      cam.updateMatrixWorld(true);
+
+      const sphereCenter = planet.getWorldPosition(new THREE.Vector3());
+      const geom = planet.geometry as THREE.BufferGeometry;
+      if (!geom.boundingSphere) geom.computeBoundingSphere();
+      const radius = (geom.boundingSphere?.radius ?? 50) * (planet.scale?.x ?? 1);
+
+      const camPos = cam.getWorldPosition(new THREE.Vector3());
+      const camForward = new THREE.Vector3(0, 0, -1).applyQuaternion(cam.quaternion).normalize();
+
+      // Point visé "devant" la caméra
+      const spawnDistance = 15;
+      const pointAhead = camPos.clone().addScaledVector(camForward, spawnDistance);
+
+      let normalWorld = pointAhead.sub(sphereCenter);
+      if (normalWorld.lengthSq() < 1e-6) {
+        normalWorld = camPos.clone().sub(sphereCenter);
       }
-      if (!w || !h) return;
+      normalWorld.normalize();
 
-      mouse.x = (x / w) * 2 - 1;
-      mouse.y = (-(y / h) * 2 + 1) + tapYBiasNDC;
-
-      raycasterRef.current.near = 0.01;
-      raycasterRef.current.far = 1000;
-      raycasterRef.current.setFromCamera(mouse, cameraRef.current);
-
-      planetRef.current.updateMatrixWorld(true);
-
-      // On raycast uniquement des sphères proxy (beaucoup plus stable que de raycaster toute la planète)
-      const proxyHits = raycasterRef.current.intersectObjects(hitProxiesRef.current, false);
-      if (proxyHits.length > 0) {
-        proxyHits.sort((a, b) => a.distance - b.distance);
-        const hitObj = proxyHits[0].object as THREE.Mesh & { userData?: any };
-        const target = hitObj.userData?.target as THREE.Mesh | undefined;
-        const clickedRect = (target ?? null) as THREE.Mesh | null;
-        if (clickedRect) {
-          setSelectedRect(clickedRect);
-          setPickerVisible(true);
-          return;
-        }
+      // Empêcher les murs trop bas: on force une latitude minimale
+      const minNormalY = 0.25;
+      if (normalWorld.y < minNormalY) {
+        normalWorld.y = minNormalY;
+        normalWorld.normalize();
       }
 
-      const result = placeRectangleOnSurface(
-        raycasterRef.current,
-        cameraRef.current,
-        planetRef.current,
-        x,
-        y,
-        w,
-        h
-      );
+      const hitPointWorld = sphereCenter.clone().addScaledVector(normalWorld, radius);
 
-      if (result && planetRef.current) {
-        const rectangle = createRectangle(result.position, result.normal);
+        // IMPORTANT: on ajoute le rectangle en enfant de `planet`, donc on doit travailler en coordonnées LOCALES planète
+        const hitPointLocal = planet.worldToLocal(hitPointWorld.clone());
+        const normalLocal = hitPointLocal.clone().normalize();
+
+        // Créer le rectangle + ouvrir directement la galerie
+        // Offset plus haut pour éviter qu'il rentre dans la planète
+        const rectangle = createRectangle(hitPointLocal, normalLocal, 2.5);
         rectangle.layers.set(1);
+
+        // Base tangent (local): 2 axes "sur le sol" pour flotter latéralement
+        const tangentX = new THREE.Vector3(0, 1, 0).cross(normalLocal);
+        if (tangentX.lengthSq() < 1e-6) tangentX.set(1, 0, 0).cross(normalLocal);
+        tangentX.normalize();
+        const tangentY = new THREE.Vector3().crossVectors(normalLocal, tangentX).normalize();
+
         // Ajouter les données pour l'animation et l'interaction
         const rectCount = wallsRef.current.length;
         rectangle.userData = {
-          basePosition: result.position.clone(),
+          // basePosition = position réelle du mesh (inclut déjà le heightAboveSurface)
+          basePosition: rectangle.position.clone(),
+          baseNormal: normalLocal.clone(),
+          baseTangentX: tangentX.clone(),
+          baseTangentY: tangentY.clone(),
           floatOffset: Math.random() * Math.PI * 2,
           floatSpeed: 0.5 + Math.random() * 0.5,
           floatAmplitude: 0.1 + Math.random() * 0.15,
+          floatOffset2: Math.random() * Math.PI * 2,
+          floatSpeed2: 0.35 + Math.random() * 0.35,
+          floatAmplitude2: 0.06 + Math.random() * 0.08,
+          floatOffset3: Math.random() * Math.PI * 2,
+          floatSpeed3: 0.35 + Math.random() * 0.35,
+          floatAmplitude3: 0.06 + Math.random() * 0.08,
           id: rectCount,
           message: `Nouveau rectangle ${rectCount + 1}`
         };
 
         console.log('Nouveau rectangle créé:', rectangle.userData.message);
 
-        planetRef.current.add(rectangle);
+        planet.add(rectangle);
         wallsRef.current.push(rectangle);
 
-        // Créer et attacher un proxy pour ce nouveau rectangle
-        const proxyGeo = new THREE.SphereGeometry(0.9, 12, 12);
-        const proxyMat = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0, depthWrite: false });
-        const proxy = new THREE.Mesh(proxyGeo, proxyMat);
-        proxy.userData = { target: rectangle };
-        proxy.frustumCulled = false;
-        // Décalage léger vers l'extérieur le long de la normale pour réduire les chevauchements
-        const normal = result.normal.clone().normalize();
-        proxy.position.addScaledVector(normal, 0.2);
-        rectangle.add(proxy);
-        hitProxiesRef.current.push(proxy);
+        if (typeof __DEV__ !== 'undefined' && __DEV__) {
+          console.log('[Tap] wall created', {
+            id: rectangle.userData?.id,
+            localPos: hitPointLocal.toArray(),
+            localNormal: normalLocal.toArray(),
+            totalWalls: wallsRef.current.length,
+          });
+        }
+
+      try {
+          // Lancer le picker au tick suivant: plus fiable depuis un PanResponder
+          await new Promise<void>(resolve => setTimeout(resolve, 0));
+
+        const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+        if (status !== 'granted') {
+          console.warn('Permission bibliothèque refusée');
+          // Retirer le rectangle si on ne peut pas choisir d'image
+          try { planet.remove(rectangle); } catch { }
+          wallsRef.current = wallsRef.current.filter(r => r !== rectangle);
+          try { (rectangle.geometry as any)?.dispose?.(); } catch { }
+          try {
+            const mat = rectangle.material as any;
+            if (Array.isArray(mat)) mat.forEach(m => m?.dispose?.());
+            else mat?.dispose?.();
+          } catch { }
+          return;
+        }
+
+        if (typeof __DEV__ !== 'undefined' && __DEV__) {
+          console.log('[Tap] opening image picker');
+        }
+        const result = await ImagePicker.launchImageLibraryAsync({
+          mediaTypes: ImagePicker.MediaTypeOptions.Images,
+          quality: 1,
+        });
+
+        if (!result.canceled && result.assets?.[0]?.uri) {
+          if (typeof __DEV__ !== 'undefined' && __DEV__) {
+            console.log('[Tap] picked image', { uri: result.assets[0].uri });
+          }
+          await applyTextureToRect(rectangle, result.assets[0].uri);
+        } else {
+          if (typeof __DEV__ !== 'undefined' && __DEV__) {
+            console.log('[Tap] picker canceled -> remove wall');
+          }
+          // Annulé: retirer le rectangle créé
+          try { planet.remove(rectangle); } catch { }
+          wallsRef.current = wallsRef.current.filter(r => r !== rectangle);
+          try { (rectangle.geometry as any)?.dispose?.(); } catch { }
+          try {
+            const mat = rectangle.material as any;
+            if (Array.isArray(mat)) mat.forEach(m => m?.dispose?.());
+            else mat?.dispose?.();
+          } catch { }
+        }
+      } catch (e) {
+        console.warn('Erreur sélection image:', e);
       }
     } catch (e) {
       console.error('[handleScreenTap] erreur:', e);
@@ -595,6 +672,12 @@ export default function SceneThree() {
     };
 
     setGrassColorMode(grassColorMap[timeMode]);
+
+    // Rafraîchir l'eau pour qu'elle prenne bien le nouvel envMap (morning/midday/evening/night)
+    if (waterMaterialRef.current) {
+      waterMaterialRef.current.envMapIntensity = 3.0;
+      waterMaterialRef.current.needsUpdate = true;
+    }
   }, [timeMode]);
 
 
@@ -643,6 +726,11 @@ export default function SceneThree() {
     }
   }, [grassColorMode]);
 
+  useEffect(() => {
+    if (grassGroupRef.current) grassGroupRef.current.visible = (groundMode === 'grass');
+    if (waterGroupRef.current) waterGroupRef.current.visible = (groundMode === 'water');
+  }, [groundMode, sceneKey]);
+
 
 
 
@@ -675,6 +763,32 @@ export default function SceneThree() {
       }
 
       const scene = sceneRef.current;
+      const waterGroup = waterGroupRef.current;
+      if (waterGroup) {
+        try { waterGroup.parent?.remove(waterGroup); } catch { }
+        waterGroup.traverse((obj) => {
+          const anyObj = obj as any;
+          if (anyObj?.geometry?.dispose) {
+            try { anyObj.geometry.dispose(); } catch { }
+          }
+          if (anyObj?.material?.dispose) {
+            try { anyObj.material.dispose(); } catch { }
+          }
+        });
+      }
+
+      if (waterMaterialRef.current) {
+        try { waterMaterialRef.current.dispose(); } catch { }
+        waterMaterialRef.current = null;
+      }
+
+      if (waterDudvRef.current) {
+        try { waterDudvRef.current.dispose(); } catch { }
+        waterDudvRef.current = null;
+      }
+      waterGroupRef.current = null;
+
+      // NOTE: on redéclare `scene` plus haut maintenant
       if (scene) {
         if (weatherRef.current.rain) {
           scene.remove(weatherRef.current.rain.group);
@@ -698,6 +812,20 @@ export default function SceneThree() {
 
 
   const onContextCreate = (gl: ExpoWebGLRenderingContext) => {
+    // Expo GL (EXGL) expose parfois renderbufferStorageMultisample() mais l'implémentation native n'existe pas.
+    // Three.js peut l'appeler via des renderTargets WebGL2 => crash.
+    // On force un fallback "sans MSAA" pour éviter l'exception.
+    try {
+      const anyGl = gl as any;
+      anyGl.renderbufferStorageMultisample = (
+        target: number,
+        _samples: number,
+        internalformat: number,
+        width: number,
+        height: number
+      ) => anyGl.renderbufferStorage(target, internalformat, width, height);
+    } catch { }
+
     if (atmosphereDataRef.current) {
       atmosphereDataRef.current.renderTarget?.dispose();
       atmosphereDataRef.current.postMaterial?.dispose();
@@ -708,7 +836,7 @@ export default function SceneThree() {
 
     setScreenDimensions({ width, height });
 
-    const renderer = new Renderer({ gl });
+    const renderer = new Renderer({ gl, antialias: false });
     renderer.setSize(width, height);
     rendererRef.current = renderer;
 
@@ -724,7 +852,6 @@ export default function SceneThree() {
 
     // Les murs/écrans sont sur le layer 1
     camera.layers.enable(1);
-    raycasterRef.current.layers.enable(1);
 
     camera.position.set(0, 2, 3);
     camera.rotation.order = "YXZ";
@@ -766,28 +893,8 @@ export default function SceneThree() {
     scene.add(gridFloor);
     gridFloorRef.current = gridFloor;
 
-    const rectangles = createRandomRectangles(20);
-    const proxies: THREE.Mesh[] = [];
-    rectangles.forEach(rect => {
-      rect.layers.set(1);
-      planet.add(rect);
-
-      const proxyGeo = new THREE.SphereGeometry(0.9, 12, 12);
-      const proxyMat = new THREE.MeshBasicMaterial({ color: 0xff0000, transparent: true, opacity: 0, depthWrite: false });
-      const proxy = new THREE.Mesh(proxyGeo, proxyMat);
-      proxy.userData = { target: rect };
-      proxy.frustumCulled = false;
-      proxy.layers.set(1);
-
-      // Décaler le proxy vers l'extérieur le long de la normale monde pour éviter les confusions
-      const worldPos = rect.getWorldPosition(new THREE.Vector3());
-      const normal = worldPos.clone().normalize();
-      proxy.position.addScaledVector(normal, 0.2);
-      rect.add(proxy);
-      proxies.push(proxy);
-    });
-    wallsRef.current = rectangles;
-    hitProxiesRef.current = proxies;
+    // Démarrer sans murs: ils seront créés au tap + sélection d'image
+    wallsRef.current = [];
 
     const atmosphereData = createAtmosphereMeshes(scene, width, height, {
       planetPosition: new THREE.Vector3(0, -50, 0),
@@ -811,6 +918,63 @@ export default function SceneThree() {
       minHeight: 0.2,
       maxHeight: 0.6,
     });
+
+    // Eau: coque sphérique collée à la planète (suit sa forme)
+    const waterGroup = new THREE.Group();
+    const waterRadius = 50.15;
+    // Coque sphérique complète (recouvre toute la planète)
+    const waterGeometry = new THREE.SphereGeometry(waterRadius, 64, 64);
+    const waterMaterial = new THREE.MeshPhysicalMaterial({
+      color: new THREE.Color(0x0b1a2b),
+      roughness: 0.02,
+      metalness: 0.0,
+      transmission: 0.0,
+      thickness: 0.0,
+      transparent: true,
+      opacity: 1,
+      envMapIntensity: 3.0,
+      clearcoat: 1.0,
+      clearcoatRoughness: 0.03,
+    });
+
+    // Évite les artefacts quand la coque est très proche de la planète
+    waterMaterial.depthWrite = false;
+
+    const waterMesh = new THREE.Mesh(waterGeometry, waterMaterial);
+    waterMesh.frustumCulled = false;
+    waterMesh.renderOrder = 1;
+
+    waterGroup.add(waterMesh);
+    waterMaterialRef.current = waterMaterial;
+
+    // Charger la texture DUDV et l'utiliser comme normalMap animée
+    (async () => {
+      try {
+        const dudvAsset = Asset.fromModule(require('../../assets/textures/waterudv.png'));
+        await dudvAsset.downloadAsync();
+        const dudvUri = dudvAsset.localUri ?? dudvAsset.uri;
+        const tex = await new TextureLoader().loadAsync(dudvUri);
+        tex.wrapS = THREE.RepeatWrapping;
+        tex.wrapT = THREE.RepeatWrapping;
+        tex.flipY = false;
+        tex.repeat.set(10, 10);
+        tex.offset.set(0, 0);
+        tex.needsUpdate = true;
+
+        waterDudvRef.current = tex;
+
+        // IMPORTANT: pour que l'eau reflète correctement l'envMap (HDRI),
+        // on n'utilise pas la DUDV comme "map" (albedo) / roughnessMap.
+        // On s'en sert uniquement comme normalMap animée.
+        waterMaterial.normalMap = tex;
+        // "waveStrength" (déformation) — plus haut = vagues plus fortes
+        waterMaterial.normalScale.set(1.5, 1.5);
+        (waterMaterial as any).reflectivity = 1.0;
+        waterMaterial.needsUpdate = true;
+      } catch (e) {
+        console.warn('Water DUDV load failed', e);
+      }
+    })();
 
     const rainSystem = createWeatherSystem(scene, {
       rainCount: 1000,
@@ -857,6 +1021,13 @@ export default function SceneThree() {
     grassGroupRef.current = grassData.group;
     grassMaterialRef.current = grassData.material;
     grassParamsRef.current = grassData.params;
+
+
+    planet.add(waterGroup);
+    waterGroupRef.current = waterGroup;
+
+    grassData.group.visible = (groundMode === 'grass');
+    waterGroup.visible = (groundMode === 'water');
 
     prevRotRef.current = {
       x: planet.rotation.x,
@@ -950,6 +1121,14 @@ export default function SceneThree() {
         updateGrassShaderFog(grassMaterialRef.current, sceneRef.current);
       }
 
+      // Animation eau: faire défiler la normalMap (DUDV) pour simuler des vagues
+      if (waterDudvRef.current) {
+        const t = clockRef.current.getElapsedTime();
+        // "waveSpeed" — très lent pour un mouvement plus doux
+        waterDudvRef.current.offset.x = (t * 0.02) % 1;
+        waterDudvRef.current.offset.y = (t * 0.015) % 1;
+      }
+
       // Update weather (sans deltaTime comme dans grass.tsx)
       if (weatherRef.current.rain?.group.visible) {
         try {
@@ -1002,9 +1181,24 @@ export default function SceneThree() {
       const time = clockRef.current.getElapsedTime();
       wallsRef.current.forEach(rect => {
         if (rect.userData.basePosition) {
-          const offset = Math.sin(time * rect.userData.floatSpeed + rect.userData.floatOffset) * rect.userData.floatAmplitude;
-          const normal = rect.userData.basePosition.clone().normalize();
-          rect.position.copy(rect.userData.basePosition).addScaledVector(normal, offset);
+          // Évite de "rentrer" dans la planète: offset toujours >= 0
+          const phase = Math.sin(time * rect.userData.floatSpeed + rect.userData.floatOffset);
+          const offset = (phase * 0.5 + 0.5) * rect.userData.floatAmplitude;
+
+          const normal = (rect.userData.baseNormal ? rect.userData.baseNormal.clone() : rect.userData.basePosition.clone().normalize());
+
+          // Flottement latéral dans 2 axes du plan tangent (peut aller +/-)
+          const tx = rect.userData.baseTangentX ? rect.userData.baseTangentX.clone() : new THREE.Vector3(0, 1, 0).cross(normal).normalize();
+          const ty = rect.userData.baseTangentY ? rect.userData.baseTangentY.clone() : new THREE.Vector3().crossVectors(normal, tx).normalize();
+
+          const lateralX = Math.sin(time * (rect.userData.floatSpeed2 ?? 0.5) + (rect.userData.floatOffset2 ?? 0)) * (rect.userData.floatAmplitude2 ?? 0.08);
+          const lateralY = Math.cos(time * (rect.userData.floatSpeed3 ?? 0.55) + (rect.userData.floatOffset3 ?? 0)) * (rect.userData.floatAmplitude3 ?? 0.08);
+
+          rect.position
+            .copy(rect.userData.basePosition)
+            .addScaledVector(normal, offset)
+            .addScaledVector(tx, lateralX)
+            .addScaledVector(ty, lateralY);
         }
       });
 
@@ -1110,6 +1304,7 @@ export default function SceneThree() {
         <GLView
           key={sceneKey}
           style={{ flex: 1 }}
+          msaaSamples={0}
           onContextCreate={onContextCreate}
         />
       </View>
@@ -1343,110 +1538,91 @@ export default function SceneThree() {
       )}
 
       {isGrassColorMode && (
-        <ButtonGrassColor
-          gap={4}
-          activeId={grassColorMode}
-          buttons={[
-            {
-              id: 'yellow_1',
-              color: '#F3D98F',
-              onPress: () => {
-                setGrassColorMode('yellow_1');
-              },
-            },
-            {
-              id: 'orange',
-              color: '#F18C22',
-              onPress: () => {
-                setGrassColorMode('orange');
-              },
-            },
-            {
-              id: 'pink',
-              color: '#F761DE',
-              onPress: () => {
-                setGrassColorMode('pink');
-              },
-            },
-            {
-              id: 'blue',
-              color: '#7298C7',
-              onPress: () => {
-                setGrassColorMode('blue');
-              },
-            },
-            {
-              id: 'green_1',
-              color: '#B4B535',
-              onPress: () => {
-                setGrassColorMode('green_1');
-              },
-            },
-            {
-              id: 'green_2',
-              color: '#2B885C',
-              onPress: () => {
-                setGrassColorMode('green_2');
-              },
-            },
-            {
-              id: 'yellow_2',
-              color: '#6859f2',
-              onPress: () => {
-                setGrassColorMode('yellow_2');
-              },
-            },
-            {
-              id: 'red',
-              color: '#F20712',
-              onPress: () => {
-                setGrassColorMode('red');
-              },
-            },
-          ]}
-        />
-      )}
-
-      {/* Modal de sélection d'image */}
-      <Modal
-        visible={pickerVisible}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setPickerVisible(false)}
-      >
-        <View style={styles.modalBackdrop}>
-          <View style={styles.modalCard}>
-            <Text style={styles.modalTitle}>Choisir une image</Text>
+        <>
+          <View style={styles.floorModeToggle}>
             <TouchableOpacity
-              style={styles.modalButton}
-              onPress={async () => {
-                try {
-                  const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-                  if (status !== 'granted') {
-                    console.warn('Permission bibliothèque refusée');
-                    return;
-                  }
-                  const result = await ImagePicker.launchImageLibraryAsync({
-                    mediaTypes: ImagePicker.MediaTypeOptions.Images,
-                    quality: 1,
-                  });
-                  if (!result.canceled && result.assets?.[0]?.uri && selectedRect) {
-                    await applyTextureToRect(selectedRect, result.assets[0].uri);
-                    setPickerVisible(false);
-                  }
-                } catch (e) {
-                  console.warn('Erreur sélection image:', e);
-                }
-              }}
+              style={[styles.floorModeBtn, groundMode === 'grass' ? styles.floorModeBtnActive : null]}
+              onPress={() => setGroundMode('grass')}
+              activeOpacity={0.8}
             >
-              <Text style={styles.modalButtonText}>Ouvrir la galerie</Text>
+              <Text style={styles.floorModeText}>HERBE</Text>
             </TouchableOpacity>
-            <TouchableOpacity style={[styles.modalButton, styles.modalCancel]} onPress={() => setPickerVisible(false)}>
-              <Text style={styles.modalButtonText}>Annuler</Text>
+            <TouchableOpacity
+              style={[styles.floorModeBtn, groundMode === 'water' ? styles.floorModeBtnActive : null]}
+              onPress={() => setGroundMode('water')}
+              activeOpacity={0.8}
+            >
+              <Text style={styles.floorModeText}>EAU</Text>
             </TouchableOpacity>
           </View>
-        </View>
-      </Modal>
+
+          {groundMode === 'grass' && (
+            <ButtonGrassColor
+              gap={4}
+              activeId={grassColorMode}
+              buttons={[
+                {
+                  id: 'yellow_1',
+                  color: '#F3D98F',
+                  onPress: () => {
+                    setGrassColorMode('yellow_1');
+                  },
+                },
+                {
+                  id: 'orange',
+                  color: '#F18C22',
+                  onPress: () => {
+                    setGrassColorMode('orange');
+                  },
+                },
+                {
+                  id: 'pink',
+                  color: '#F761DE',
+                  onPress: () => {
+                    setGrassColorMode('pink');
+                  },
+                },
+                {
+                  id: 'blue',
+                  color: '#7298C7',
+                  onPress: () => {
+                    setGrassColorMode('blue');
+                  },
+                },
+                {
+                  id: 'green_1',
+                  color: '#B4B535',
+                  onPress: () => {
+                    setGrassColorMode('green_1');
+                  },
+                },
+                {
+                  id: 'green_2',
+                  color: '#2B885C',
+                  onPress: () => {
+                    setGrassColorMode('green_2');
+                  },
+                },
+                {
+                  id: 'yellow_2',
+                  color: '#6859f2',
+                  onPress: () => {
+                    setGrassColorMode('yellow_2');
+                  },
+                },
+                {
+                  id: 'red',
+                  color: '#F20712',
+                  onPress: () => {
+                    setGrassColorMode('red');
+                  },
+                },
+              ]}
+            />
+          )}
+        </>
+      )}
+
     </View>
   );
 }
@@ -1528,5 +1704,36 @@ const styles = StyleSheet.create({
     display: 'flex',
     flexDirection: 'row',
     gap: 12,
-  }
+  },
+
+  floorModeToggle: {
+    position: 'absolute',
+    top: 76,
+    alignSelf: 'center',
+    flexDirection: 'row',
+    gap: 8,
+    padding: 6,
+    backgroundColor: 'rgba(211, 216, 224, 0.40)',
+    borderRadius: 100,
+    height: 42,
+    alignItems: 'center',
+  },
+  floorModeBtn: {
+    paddingHorizontal: 12,
+    height: 30,
+    borderRadius: 100,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(255, 255, 255, 0.20)',
+  },
+  floorModeBtnActive: {
+    borderWidth: 0.5,
+    borderColor: 'rgba(41, 45, 50, 0.80)',
+    backgroundColor: 'rgba(255, 255, 255, 0.35)',
+  },
+  floorModeText: {
+    color: 'rgba(41, 45, 50, 0.95)',
+    fontWeight: '700',
+    fontSize: 12,
+  },
 });

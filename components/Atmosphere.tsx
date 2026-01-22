@@ -174,6 +174,10 @@ export const createAtmosphereMeshes = (
     stencilBuffer: false,
   });
 
+  // Expo GL (EXGL) ne supporte pas renderbufferStorageMultisample().
+  // On force donc un renderTarget sans MSAA.
+  (renderTarget as any).samples = 0;
+
   const postScene = new THREE.Scene();
   const postCamera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
 
