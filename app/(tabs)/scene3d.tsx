@@ -8,6 +8,7 @@ import * as ImageManipulator from 'expo-image-manipulator';
 import * as THREE from "three";
 import * as ScreenOrientation from 'expo-screen-orientation';
 import { Audio } from "expo-av";
+import { useFonts } from "expo-font";
 
 import Joystick from "../../components/Joystick";
 import ButtonMenu from "../../components/ButtonMenu";
@@ -63,6 +64,8 @@ import {
   type ButterflyData,
 } from "../../components/Butterflies";
 
+
+
 export default function SceneThree() {
   const animationFrameId = useRef<number | null>(null);
   const rotationRef = useDeviceMotion();
@@ -86,6 +89,10 @@ export default function SceneThree() {
   const baseQuatRef = useRef<THREE.Quaternion>(new THREE.Quaternion());
   const deviceQuatRef = useRef<THREE.Quaternion>(new THREE.Quaternion());
   const calibrationQuatRef = useRef<THREE.Quaternion>(new THREE.Quaternion());
+
+  const [loaded] = useFonts({
+    "Futura": require("../../assets/fonts/fontbook2.otf"),
+  });
 
   const velocityRef = useRef<{ x: number; z: number }>({ x: 0, z: 0 });
   const [joystickPosition, setJoystickPosition] = useState({ x: 0, y: 0 });
