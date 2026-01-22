@@ -7,6 +7,7 @@ import { Asset } from 'expo-asset';
 import * as ImageManipulator from 'expo-image-manipulator';
 import * as THREE from "three";
 import * as ScreenOrientation from 'expo-screen-orientation';
+import { Audio } from "expo-av";
 
 import Joystick from "../../components/Joystick";
 import ButtonMenu from "../../components/ButtonMenu";
@@ -117,6 +118,108 @@ export default function SceneThree() {
   // limites pitch
   const pitchRef = useRef(0); // radians
   const yawRef = useRef(0);   // radians
+
+  const ambienceSoundRef = useRef<Audio.Sound | null>(null);
+  const ambienceKeyRef = useRef<string | null>(null);
+  const ambienceTokenRef = useRef(0);
+
+  const AMBIENCE_SOURCES = {
+    rain: require("../../assets/audio/ambience/rain.mp3"),
+    snow: require("../../assets/audio/ambience/wind.mp3"),
+    butterflyDay: require("../../assets/audio/ambience/cicada.mp3"),
+    butterflyNight: require("../../assets/audio/ambience/cricket.mp3"),
+    day: require("../../assets/audio/ambience/bird.mp3"),
+    night: require("../../assets/audio/ambience/owl.mp3"),
+  } as const;
+
+  type AmbienceKey = keyof typeof AMBIENCE_SOURCES;
+
+  const getAmbienceKey = (
+    weather: "rain" | "snow" | "butterfly" | "none",
+    time: "morning" | "midday" | "evening" | "night"
+  ): AmbienceKey => {
+    if (weather === "rain") return "rain";
+    if (weather === "snow") return "snow";
+    if (weather === "butterfly") return time === "morning" || time === "midday" ? "butterflyDay" : "butterflyNight";
+    // weather === "none"
+    return time === "morning" || time === "midday" ? "day" : "night";
+  };
+
+  const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+  const fadeVolume = async (sound: Audio.Sound, from: number, to: number, ms = 400, steps = 12) => {
+    const dt = ms / steps;
+    for (let i = 0; i <= steps; i++) {
+      const t = i / steps;
+      const v = from + (to - from) * t;
+      try {
+        await sound.setVolumeAsync(Math.max(0, Math.min(1, v)));
+      } catch {
+        // ignore si le son a été unload entre temps
+        return;
+      }
+      await sleep(dt);
+    }
+  };
+
+  const stopAndUnloadAmbience = async () => {
+    const s = ambienceSoundRef.current;
+    ambienceSoundRef.current = null;
+    ambienceKeyRef.current = null;
+    if (!s) return;
+    try {
+      await s.stopAsync();
+    } catch { }
+    try {
+      await s.unloadAsync();
+    } catch { }
+  };
+
+  const playAmbienceForKey = async (key: AmbienceKey) => {
+    const token = ++ambienceTokenRef.current;
+
+    // si c'est déjà le bon son, ne fais rien
+    if (ambienceKeyRef.current === key && ambienceSoundRef.current) return;
+
+    // coupe l'ancien en fondu
+    const prev = ambienceSoundRef.current;
+    if (prev) {
+      try {
+        const status = await prev.getStatusAsync();
+        const prevVol = (status as any)?.volume ?? 1;
+        await fadeVolume(prev, prevVol, 0, 350);
+      } catch { }
+      try { await prev.stopAsync(); } catch { }
+      try { await prev.unloadAsync(); } catch { }
+    }
+
+    // si un autre changement est intervenu pendant le fade, on abandonne
+    if (token !== ambienceTokenRef.current) return;
+
+    // charge le nouveau
+    const source = AMBIENCE_SOURCES[key];
+    const { sound } = await Audio.Sound.createAsync(
+      source,
+      {
+        shouldPlay: true,
+        isLooping: true,
+        volume: 0, // on fade in
+      }
+    );
+
+    // si un autre changement est intervenu pendant le load, on cleanup
+    if (token !== ambienceTokenRef.current) {
+      try { await sound.stopAsync(); } catch { }
+      try { await sound.unloadAsync(); } catch { }
+      return;
+    }
+
+    ambienceSoundRef.current = sound;
+    ambienceKeyRef.current = key;
+
+    // fade in
+    await fadeVolume(sound, 0, 1, 450);
+  };
 
   const handleLookJoystickMove = (v: { x: number; z: number }) => {
     lookInputRef.current = { x: v.x, y: v.z };
@@ -408,8 +511,8 @@ export default function SceneThree() {
     velocityRef.current = velocity;
     const maxDistance = 40;
     setJoystickPosition({
-      x: -velocity.x * maxDistance, 
-      y: velocity.z * maxDistance,  
+      x: -velocity.x * maxDistance,
+      y: velocity.z * maxDistance,
     });
   };
 
@@ -453,6 +556,27 @@ export default function SceneThree() {
 
     updateFogDensity(sceneRef.current, value);
   };
+
+  useEffect(() => {
+    (async () => {
+      try {
+        await Audio.setAudioModeAsync({
+          allowsRecordingIOS: false,
+          staysActiveInBackground: false,
+          playsInSilentModeIOS: true, // important sur iOS
+          shouldDuckAndroid: true,
+          playThroughEarpieceAndroid: false,
+        });
+      } catch (e) {
+        console.warn("[AudioMode] error", e);
+      }
+    })();
+  }, []);
+
+  useEffect(() => {
+    const key = getAmbienceKey(weatherMode, timeMode);
+    playAmbienceForKey(key);
+  }, [weatherMode, timeMode]);
 
   useEffect(() => {
     loadHdriForMode(timeMode);
@@ -567,6 +691,8 @@ export default function SceneThree() {
 
       disposeButterflySystem(butterflyDataRef.current);
       butterflyDataRef.current = null;
+
+      stopAndUnloadAmbience();
     };
   }, [sceneKey]);
 
