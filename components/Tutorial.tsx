@@ -72,7 +72,7 @@ export function ScreenTutorialGalerie({ onPress, onTutorialGalerieComplete }: Sc
               <View style={styles.cercle}>
               </View>
             </View>
-            <Text style={styles.tutoTexte}>Acceuil</Text>
+            <Text style={styles.tutoTexte}>Accueil</Text>
           </View>
         )}
 
