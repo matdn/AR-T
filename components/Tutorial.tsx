@@ -466,7 +466,8 @@ const styles = StyleSheet.create({
   },
   tutoTexte: {
     color: '#0900FF',
-    fontWeight: '600',
+    fontWeight: '300',
+    fontFamily: 'Futura',
   },
   arrow: {
     position: 'absolute',
